@@ -91,8 +91,32 @@
         </section>
 
         <section class="page" id="twin" data-title="Digital Twin">
-          <div class="section-heading"><div><p class="eyebrow">OBSERVE THE CITY</p><h1>Digital Twin</h1><p>Local vector model of simulated zones, assets, routes, and risks.</p></div><div class="map-tools"><label><input id="showHotspots" type="checkbox" checked> Hotspots</label><label><input id="showRoutes" type="checkbox" checked> Routes</label><label><input id="showBins" type="checkbox" checked> Bins</label></div></div>
-          <div class="twin-layout"><article class="panel twin-map-panel"><div id="cityMap" class="city-map"></div><div class="map-legend"><span><i class="lg green"></i>L1–2</span><span><i class="lg yellow"></i>L3–4</span><span><i class="lg orange"></i>L5–6</span><span><i class="lg red"></i>L7 Critical</span><span><i class="lg blue"></i>Truck</span><span><i class="lg purple"></i>Facility</span></div></article><aside id="assetDetail" class="panel detail-panel"></aside></div>
+          <div class="section-heading twin-heading"><div><p class="eyebrow">OBSERVE THE CITY</p><h1>Digital Twin</h1><p>Local vector model of simulated zones, assets, routes, and risks.</p></div><div class="map-tools"><label><input id="showHotspots" type="checkbox" checked> Hotspots</label><label><input id="showRoutes" type="checkbox" checked> Routes</label><label><input id="showBins" type="checkbox" checked> Bins</label></div></div>
+          <article class="twin-stage">
+            <div id="cityMap" class="city-map atlas-map"></div>
+            <div class="map-filter-bar">
+              <div class="map-filter-title"><span class="signal blue"></span><div><b>Chhatrapati Sambhajinagar</b><small>Local simulated city model</small></div></div>
+              <label>Zone<select id="zoneFilter"><option value="all">All zones</option><option>CIDCO</option><option>Central Area</option><option>Jalna Road</option><option>Waluj</option><option>Beed Bypass</option><option>Urban Fringe</option></select></label>
+              <label>Risk<select id="riskFilter"><option value="all">All levels</option><option value="critical">Critical</option><option value="high">High</option><option value="normal">Normal</option></select></label>
+              <button id="focusCritical" class="map-action">Focus critical</button>
+            </div>
+            <div class="map-zoom-controls" aria-label="Map zoom controls">
+              <button id="mapZoomIn" aria-label="Zoom in">+</button>
+              <button id="mapZoomOut" aria-label="Zoom out">−</button>
+              <button id="mapReset" aria-label="Reset map">⌂</button>
+            </div>
+            <div class="map-legend floating-legend">
+              <strong>Legend</strong>
+              <span><i class="lg red"></i>Critical (L7)</span>
+              <span><i class="lg orange"></i>High (L5–6)</span>
+              <span><i class="lg yellow"></i>Moderate (L3–4)</span>
+              <span><i class="lg green"></i>Healthy (L1–2)</span>
+              <span><i class="lg blue square"></i>Active truck</span>
+              <span><i class="lg purple square"></i>Facility</span>
+            </div>
+            <div id="mapSummary" class="map-summary"></div>
+            <aside id="assetDetail" class="panel detail-panel map-drawer"></aside>
+          </article>
         </section>
 
         <section class="page" id="simulation" data-title="Simulation Center">
