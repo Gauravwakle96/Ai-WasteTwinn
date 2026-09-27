@@ -120,12 +120,38 @@
         </section>
 
         <section class="page" id="simulation" data-title="Simulation Center">
-          <div class="section-heading"><div><p class="eyebrow">SIMULATE</p><h1>Simulation Center</h1><p>Advance the digital city and watch each decision change the same shared state.</p></div><span id="runStatus" class="run-status paused">PAUSED</span></div>
-          <article class="panel control-deck"><div class="sim-controls"><button id="playBtn" class="btn primary">▶ Play</button><button id="stepBtn" class="btn secondary">Step +10 min</button><button id="resetBtn" class="btn ghost">↺ Reset</button><button id="replayBtn" class="btn ghost">Replay</button><button id="watchGuideBtn" class="btn ghost">▶ Watch guide</button></div><div class="speed-control"><span>Simulation speed</span><div id="speedBtns" class="segmented"><button data-speed="0.5">0.5×</button><button data-speed="1" class="active">1×</button><button data-speed="2">2×</button><button data-speed="5">5×</button><button data-speed="10">10×</button></div></div></article>
-          <div id="explainStrip" class="explain-strip" aria-label="Plain-language simulation explanation"></div>
-          <div class="sim-layout"><article class="panel sim-stage"><div class="panel-head"><div><span class="kicker">CITY CONDITION → ACTION → RESULT</span><h3>Live collection process</h3></div><strong id="stageTime">08:00</strong></div><div id="simulationMap" class="sim-map"></div><div id="eventTicker" class="event-ticker"><span class="signal blue"></span><span>Simulation ready. Press Play to begin.</span></div></article><aside class="sim-side"><article class="panel"><span class="kicker">CURRENT STEP</span><div id="currentStep" class="current-step"></div></article><article class="panel"><span class="kicker">EVENT LOG</span><div id="eventLog" class="event-log"></div></article></aside></div>
+          <div class="section-heading"><div><p class="eyebrow">SIMULATE</p><h1>Simulation Center</h1><p>See the city change in simple 10-minute steps—from rising waste to collection.</p></div><span id="runStatus" class="run-status paused">PAUSED</span></div>
+          <article class="panel sim-quick-start">
+            <div class="quick-start-copy"><span class="kicker">NEW HERE? START WITH THIS</span><h2>Watch one complete collection story</h2><p>The guided example creates a critical bin, assigns a truck, changes the route during incidents, and records the result.</p></div>
+            <ol class="quick-start-steps">
+              <li><b>1</b><span><strong>Start</strong><small>Time moves forward</small></span></li>
+              <li><b>2</b><span><strong>Observe</strong><small>Bins and risks change</small></span></li>
+              <li><b>3</b><span><strong>Understand</strong><small>AI explains its action</small></span></li>
+            </ol>
+            <button id="guidedDemoBtn" class="btn primary">▶ Run guided example</button>
+          </article>
+          <article class="panel control-deck">
+            <div class="control-label"><span class="kicker">MANUAL CONTROLS</span><small>One step equals 10 simulated minutes.</small></div>
+            <div class="sim-controls"><button id="playBtn" class="btn primary">▶ Start simulation</button><button id="stepBtn" class="btn secondary">+10 min</button><button id="resetBtn" class="btn ghost">↺ Reset</button><button id="replayBtn" class="btn ghost">Replay run</button><button id="watchGuideBtn" class="btn ghost">▶ Watch video</button></div>
+            <div class="speed-control"><span>Speed</span><div id="speedBtns" class="segmented"><button data-speed="0.5">0.5×</button><button data-speed="1" class="active">1×</button><button data-speed="2">2×</button><button data-speed="5">5×</button><button data-speed="10">10×</button></div></div>
+          </article>
+          <div id="simSnapshot" class="sim-snapshot" aria-label="Current simulation summary"></div>
+          <div id="explainStrip" class="explain-strip decision-flow" aria-label="Plain-language simulation explanation"></div>
+          <div class="sim-layout">
+            <article class="panel sim-stage">
+              <div class="panel-head"><div><span class="kicker">LIVE CITY VIEW</span><h3>Watch the collection process</h3><p>Dots are bins. Blue vehicles move when the simulation advances.</p></div><strong id="stageTime">08:00</strong></div>
+              <div id="simulationMap" class="sim-map"></div>
+              <div class="sim-map-legend"><span><i class="lg green"></i>Healthy</span><span><i class="lg yellow"></i>Moderate</span><span><i class="lg orange"></i>High</span><span><i class="lg red"></i>Critical</span><span><i class="lg blue square"></i>Truck</span></div>
+              <div id="eventTicker" class="event-ticker"><span class="signal blue"></span><span>Ready. Start the simulation or advance one 10-minute step.</span></div>
+            </article>
+            <aside class="sim-side">
+              <article class="panel cycle-panel"><span class="kicker">THIS 10-MINUTE CYCLE</span><div id="currentStep" class="current-step"></div></article>
+              <article class="panel try-event-panel"><span class="kicker">TRY A CHANGE</span><h3>See the system adapt</h3><p class="muted">Activate one incident and then advance the simulation.</p><div class="sim-event-buttons"><button data-sim-incident="rain">☂ Heavy rain</button><button data-sim-incident="road">⊘ Road closure</button><button data-sim-incident="breakdown">⚠ Truck breakdown</button></div></article>
+              <article class="panel"><span class="kicker">WHAT JUST HAPPENED?</span><div id="eventLog" class="event-log"></div></article>
+            </aside>
+          </div>
           <details class="panel model-details">
-            <summary>View simulation assumptions and formulas</summary>
+            <summary>For technical users: view assumptions and formulas</summary>
             <div class="formula-grid">
               <div><span>BIN UPDATE</span><b>Added waste = rate × 10/60 × modifiers</b><small>Fill % = waste ÷ bin capacity × 100</small></div>
               <div><span>PREDICTION</span><b>90-minute local forecast</b><small>Uses current fill, generation rate, rain, festival, and surge conditions.</small></div>
