@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="AI-WasteTwin — local urban waste-management digital twin simulation for Chhatrapati Sambhajinagar." />
+  <title>AI-WasteTwin — Predict • Simulate • Optimize</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div id="landing" class="landing">
+    <div class="landing-grid" aria-hidden="true"></div>
+    <header class="landing-nav shell">
+      <a class="brand" href="#home" aria-label="AI-WasteTwin home"><span class="brand-mark">AW</span><span>AI-WasteTwin</span></a>
+      <div class="status-chips"><span class="chip green">● SIMULATION MODE</span><span class="chip">LOCAL / OFFLINE</span></div>
+    </header>
+    <main class="hero shell">
+      <div class="hero-copy">
+        <p class="eyebrow">URBAN DIGITAL TWIN • CHHATRAPATI SAMBHAJINAGAR</p>
+        <h1>A city that learns<br><span>before bins overflow.</span></h1>
+        <p class="hero-sub">AI-powered urban waste management simulation that predicts risk, assigns vehicles, adapts routes, and explains every decision—entirely on your local machine.</p>
+        <div class="hero-actions">
+          <button class="btn primary" data-enter>Enter Digital Twin <span>→</span></button>
+          <button class="btn secondary" data-demo>▶ Start Guided Demo</button>
+        </div>
+        <div class="trust-row"><span>NO CLOUD</span><span>NO LIVE CITY DATA</span><span>EXPLAINABLE LOGIC</span></div>
+      </div>
+      <div class="hero-visual" aria-label="Stylized simulated city network">
+        <svg viewBox="0 0 640 520" role="img" aria-label="Digital city map showing bins and routes">
+          <defs>
+            <linearGradient id="routeGlow" x1="0" x2="1"><stop stop-color="#67a7ff"/><stop offset="1" stop-color="#65d69a"/></linearGradient>
+            <filter id="softGlow"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+          </defs>
+          <path class="hero-zone" d="M50 80L210 42l84 82-66 134L67 222Z"/>
+          <path class="hero-zone" d="M304 78l176-32 112 92-70 137-214-42Z"/>
+          <path class="hero-zone" d="M87 276l163-18 82 101-78 113-185-49Z"/>
+          <path class="hero-zone" d="M347 268l180 18 55 118-145 75-123-109Z"/>
+          <g class="hero-roads"><path d="M86 126L551 404"/><path d="M104 405L545 132"/><path d="M42 244L604 248"/><path d="M287 54L310 474"/><path d="M170 61L456 478"/></g>
+          <path class="hero-route" d="M92 401 C160 325 193 340 244 263 S376 190 431 232 S512 290 557 153"/>
+          <g class="hero-points">
+            <circle cx="92" cy="401" r="8" class="blue"/><circle cx="244" cy="263" r="8" class="orange"/><circle cx="431" cy="232" r="10" class="red pulse"/><circle cx="557" cy="153" r="8" class="green"/>
+            <circle cx="158" cy="175" r="5"/><circle cx="331" cy="112" r="5"/><circle cx="382" cy="388" r="5"/><circle cx="515" cy="353" r="5"/>
+          </g>
+          <g transform="translate(294 282)" class="hero-truck"><rect x="-19" y="-11" width="29" height="20" rx="4"/><path d="M10-6h9l7 8v7H10Z"/><circle cx="-10" cy="12" r="5"/><circle cx="18" cy="12" r="5"/></g>
+        </svg>
+        <div class="floating-card fc-one"><span class="signal red"></span><div><b>Critical bin detected</b><small>B-104 • Overflow in 40 min</small></div></div>
+        <div class="floating-card fc-two"><span class="signal blue"></span><div><b>Route adapted</b><small>T-07 assigned • 1.8 km</small></div></div>
+      </div>
+    </main>
+    <footer class="landing-footer shell"><span>Predict</span><i>→</i><span>Simulate</span><i>→</i><span>Optimize</span></footer>
+  </div>
+
+  <div id="app" class="app hidden">
+    <aside class="sidebar">
+      <div class="brand app-brand"><span class="brand-mark">AW</span><span>AI-WasteTwin</span></div>
+      <nav id="primaryNav" aria-label="Primary navigation">
+        <button class="nav-item active" data-page="dashboard"><span>◫</span>Dashboard</button>
+        <button class="nav-item" data-page="twin"><span>⌖</span>Digital Twin</button>
+        <button class="nav-item" data-page="simulation"><span>▶</span>Simulation</button>
+        <button class="nav-item" data-page="predictions"><span>✦</span>AI Predictions</button>
+        <button class="nav-item" data-page="routes"><span>↝</span>Vehicles & Routes</button>
+        <button class="nav-item" data-page="scenarios"><span>⚗</span>Scenarios</button>
+        <button class="nav-item" data-page="analytics"><span>▥</span>Analytics</button>
+        <button class="nav-item" data-page="how"><span>?</span>How It Works</button>
+      </nav>
+      <div class="sidebar-foot"><span class="dot live"></span><div><b>Local engine</b><small>All systems operational</small></div></div>
+    </aside>
+
+    <div class="workspace">
+      <header class="topbar">
+        <button id="menuBtn" class="icon-btn menu-btn" aria-label="Open menu">☰</button>
+        <div><p class="eyebrow">CHHATRAPATI SAMBHAJINAGAR • SIMULATED CITY</p><h2 id="pageTitle">City Overview</h2></div>
+        <div class="topbar-right">
+          <div class="status-chips"><span class="chip green">● SIMULATION MODE</span><span class="chip">LOCAL / OFFLINE</span><span class="chip amber">SIMULATED DATA</span></div>
+          <div class="clock"><span id="clockDay">MONDAY</span><strong id="simClock">08:00</strong></div>
+        </div>
+      </header>
+
+      <main id="pages">
+        <section class="page active" id="dashboard" data-title="City Overview">
+          <div class="page-intro"><div><p class="eyebrow">OBSERVE</p><h1>Good morning, operator.</h1><p>The simulated city is stable. <span id="dashboardBrief">Monitoring waste generation across all zones.</span></p></div><button class="btn secondary compact" data-page-link="how">How it works →</button></div>
+          <div id="metricGrid" class="metric-grid"></div>
+          <div class="dashboard-grid">
+            <article class="panel map-card span-2"><div class="panel-head"><div><span class="kicker">LIVE DIGITAL TWIN</span><h3>City operating picture</h3></div><button class="text-btn" data-page-link="twin">Open full map ↗</button></div><div class="mini-map" id="dashboardMap"></div><div class="map-legend"><span><i class="lg green"></i>Healthy</span><span><i class="lg yellow"></i>Moderate</span><span><i class="lg orange"></i>High</span><span><i class="lg red"></i>Critical</span><span><i class="lg blue"></i>Vehicle</span></div></article>
+            <article class="panel"><div class="panel-head"><div><span class="kicker">AI PRIORITY</span><h3>Critical queue</h3></div><span id="queueCount" class="counter">0</span></div><div id="priorityList" class="stack-list"></div></article>
+            <article class="panel"><div class="panel-head"><div><span class="kicker">7-LEVEL SYSTEM</span><h3>Bin distribution</h3></div></div><div id="levelBars" class="level-bars"></div></article>
+            <article class="panel span-2"><div class="panel-head"><div><span class="kicker">SIMULATION TREND</span><h3>Waste generation</h3></div><span class="muted">kg / tick</span></div><div id="dashboardChart" class="chart"></div></article>
+            <article class="panel"><div class="panel-head"><div><span class="kicker">AI RECOMMENDATION</span><h3>Next best action</h3></div><span class="ai-orb">✦</span></div><div id="recommendation" class="recommendation"></div></article>
+          </div>
+        </section>
+
+        <section class="page" id="twin" data-title="Digital Twin">
+          <div class="section-heading"><div><p class="eyebrow">OBSERVE THE CITY</p><h1>Digital Twin</h1><p>Local vector model of simulated zones, assets, routes, and risks.</p></div><div class="map-tools"><label><input id="showHotspots" type="checkbox" checked> Hotspots</label><label><input id="showRoutes" type="checkbox" checked> Routes</label><label><input id="showBins" type="checkbox" checked> Bins</label></div></div>
+          <div class="twin-layout"><article class="panel twin-map-panel"><div id="cityMap" class="city-map"></div><div class="map-legend"><span><i class="lg green"></i>L1–2</span><span><i class="lg yellow"></i>L3–4</span><span><i class="lg orange"></i>L5–6</span><span><i class="lg red"></i>L7 Critical</span><span><i class="lg blue"></i>Truck</span><span><i class="lg purple"></i>Facility</span></div></article><aside id="assetDetail" class="panel detail-panel"></aside></div>
+        </section>
+
+        <section class="page" id="simulation" data-title="Simulation Center">
+          <div class="section-heading"><div><p class="eyebrow">SIMULATE</p><h1>Simulation Center</h1><p>Advance the digital city and watch each decision change the same shared state.</p></div><span id="runStatus" class="run-status paused">PAUSED</span></div>
+          <article class="panel control-deck"><div class="sim-controls"><button id="playBtn" class="btn primary">▶ Play</button><button id="stepBtn" class="btn secondary">Step +10 min</button><button id="resetBtn" class="btn ghost">↺ Reset</button><button id="replayBtn" class="btn ghost">Replay</button><button id="watchGuideBtn" class="btn ghost">▶ Watch guide</button></div><div class="speed-control"><span>Simulation speed</span><div id="speedBtns" class="segmented"><button data-speed="0.5">0.5×</button><button data-speed="1" class="active">1×</button><button data-speed="2">2×</button><button data-speed="5">5×</button><button data-speed="10">10×</button></div></div></article>
+          <div id="explainStrip" class="explain-strip" aria-label="Plain-language simulation explanation"></div>
+          <div class="sim-layout"><article class="panel sim-stage"><div class="panel-head"><div><span class="kicker">CITY CONDITION → ACTION → RESULT</span><h3>Live collection process</h3></div><strong id="stageTime">08:00</strong></div><div id="simulationMap" class="sim-map"></div><div id="eventTicker" class="event-ticker"><span class="signal blue"></span><span>Simulation ready. Press Play to begin.</span></div></article><aside class="sim-side"><article class="panel"><span class="kicker">CURRENT STEP</span><div id="currentStep" class="current-step"></div></article><article class="panel"><span class="kicker">EVENT LOG</span><div id="eventLog" class="event-log"></div></article></aside></div>
+          <details class="panel model-details">
+            <summary>View simulation assumptions and formulas</summary>
+            <div class="formula-grid">
+              <div><span>BIN UPDATE</span><b>Added waste = rate × 10/60 × modifiers</b><small>Fill % = waste ÷ bin capacity × 100</small></div>
+              <div><span>PREDICTION</span><b>90-minute local forecast</b><small>Uses current fill, generation rate, rain, festival, and surge conditions.</small></div>
+              <div><span>PRIORITY</span><b>Score from 0 to 100</b><small>Fill 42% + forecast 28% + urgency 20% + generation 10% − distance penalty.</small></div>
+              <div><span>VEHICLE MOVEMENT</span><b>24 km/h baseline speed</b><small>Rain and road closures reduce effective speed and increase ETA.</small></div>
+            </div>
+          </details>
+        </section>
+
+        <section class="page" id="predictions" data-title="AI Predictions">
+          <div class="section-heading"><div><p class="eyebrow">PREDICT & PRIORITIZE</p><h1>Explainable AI Predictions</h1><p>Local formulas forecast risk and show exactly why a bin is prioritized.</p></div><span class="chip amber">SIMULATED PREDICTION</span></div>
+          <div class="prediction-grid"><article class="panel prediction-hero" id="predictionHero"></article><article class="panel"><div class="panel-head"><div><span class="kicker">PRIORITY QUEUE</span><h3>Collect first</h3></div></div><div id="predictionQueue" class="stack-list long"></div></article><article class="panel"><div class="panel-head"><div><span class="kicker">ANOMALY DETECTION</span><h3>Waste pattern monitor</h3></div></div><div id="anomalyCard"></div></article><article class="panel span-2"><div class="panel-head"><div><span class="kicker">FORECAST</span><h3>Critical-bin fill projection</h3></div></div><div id="forecastChart" class="chart forecast"></div></article></div>
+        </section>
+
+        <section class="page" id="routes" data-title="Vehicles & Routes">
+          <div class="section-heading"><div><p class="eyebrow">ASSIGN & OPTIMIZE</p><h1>Vehicles & Routes</h1><p>Capacity-aware assignment and adaptive local route simulation.</p></div><span class="chip">SIMULATED ESTIMATES</span></div>
+          <div id="vehicleMetrics" class="metric-grid compact-metrics"></div>
+          <div class="routes-grid"><article class="panel span-2"><div class="panel-head"><div><span class="kicker">FLEET STATUS</span><h3>Collection vehicles</h3></div></div><div class="table-wrap"><table><thead><tr><th>Vehicle</th><th>Status</th><th>Load</th><th>Assigned bin</th><th>ETA</th></tr></thead><tbody id="vehicleTable"></tbody></table></div></article><article class="panel route-compare"><div class="panel-head"><div><span class="kicker">ROUTE COMPARISON</span><h3>Fixed vs optimized</h3></div></div><div id="routeComparison"></div></article><article class="panel span-2"><div class="panel-head"><div><span class="kicker">PROCESSING NETWORK</span><h3>Facility load balancing</h3></div></div><div id="facilityGrid" class="facility-grid"></div></article></div>
+        </section>
+
+        <section class="page" id="scenarios" data-title="Scenario Lab">
+          <div class="section-heading"><div><p class="eyebrow">ADAPT</p><h1>Scenario Lab</h1><p>Change local conditions and see the shared simulation react.</p></div><button id="runScenario" class="btn primary">Run Scenario</button></div>
+          <div class="scenario-layout"><article class="panel scenario-controls"><h3>Scenario conditions</h3><label>Waste generation <output id="wasteOut">+0%</output><input id="wasteRange" type="range" min="0" max="80" value="0" step="10"></label><label>Rainfall <select id="rainSelect"><option value="none">None</option><option value="light">Light</option><option value="heavy">Heavy</option></select></label><label>Festival <select id="festivalSelect"><option value="off">Off</option><option value="on">On — Central Area</option></select></label><label>Road closures <output id="roadOut">0</output><input id="roadRange" type="range" min="0" max="3" value="0"></label><label>Available trucks <output id="truckOut">8</output><input id="truckRange" type="range" min="3" max="8" value="8"></label><label>Processing capacity <output id="capacityOut">100%</output><input id="capacityRange" type="range" min="50" max="100" value="100" step="10"></label></article><article class="panel span-2"><div class="panel-head"><div><span class="kicker">PROJECTED IMPACT</span><h3>Scenario outcome</h3></div><span id="scenarioName" class="chip">BASELINE</span></div><div id="scenarioResults" class="scenario-results"></div><div id="impactChart" class="chart"></div></article></div>
+          <div class="incident-grid"><button data-incident="rain" class="incident-card"><span>☂</span><b>Heavy Rain</b><small>Faster fill • slower travel</small></button><button data-incident="festival" class="incident-card"><span>✦</span><b>Festival</b><small>Central waste surge</small></button><button data-incident="road" class="incident-card"><span>⊘</span><b>Road Closure</b><small>Route recalculation</small></button><button data-incident="breakdown" class="incident-card"><span>⚠</span><b>Truck Breakdown</b><small>Vehicle reassignment</small></button><button data-incident="surge" class="incident-card"><span>↗</span><b>Waste Surge</b><small>Priority spike</small></button><button data-incident="facility" class="incident-card"><span>▥</span><b>Facility Reduction</b><small>Load rebalancing</small></button></div>
+          <article class="panel factors-panel"><div class="panel-head"><div><span class="kicker">ACTIVE FACTORS</span><h3>What changes the simulation?</h3></div></div><div id="factorGrid" class="factor-grid"></div></article>
+        </section>
+
+        <section class="page" id="analytics" data-title="Analytics">
+          <div class="section-heading"><div><p class="eyebrow">ANALYZE</p><h1>Simulation Analytics</h1><p>Every result below comes from this session's local simulation history.</p></div><button id="exportBtn" class="btn secondary">Export local report</button></div>
+          <div id="analyticsMetrics" class="metric-grid"></div>
+          <div class="analytics-grid"><article class="panel span-2"><div class="panel-head"><div><span class="kicker">OPERATIONS</span><h3>Waste collected & generated</h3></div></div><div id="analyticsChart" class="chart tall"></div></article><article class="panel"><div class="panel-head"><div><span class="kicker">SERVICE QUALITY</span><h3>Current performance</h3></div></div><div id="serviceGauges" class="gauge-list"></div></article><article class="panel span-3"><div class="panel-head"><div><span class="kicker">SIMULATED COMPARISON</span><h3>AI dynamic vs fixed scheduling</h3></div></div><div id="comparisonGrid" class="comparison-grid"></div></article></div>
+        </section>
+
+        <section class="page" id="how" data-title="How It Works">
+          <div class="section-heading"><div><p class="eyebrow">SYSTEM EXPLANATION</p><h1>From city condition to measurable result.</h1><p>A simple explanation of what enters, what happens, and what comes out.</p></div><span class="chip green">LOCAL • EXPLAINABLE • SIMULATED</span></div>
+          <article class="panel video-guide" id="videoGuide">
+            <div class="video-copy"><span class="kicker">28-SECOND VISUAL GUIDE</span><h2>Watch the complete simulation story</h2><p>See how bins fill, predictions change, a truck is assigned, incidents alter the route, and collection updates analytics.</p><div class="reason-list"><span>No internet required</span><span>Local video</span><span>Simulated data</span></div></div>
+            <video id="guideVideo" controls preload="metadata" playsinline>
+              <source src="assets/ai-wastetwin-guide.mp4" type="video/mp4">
+              Your browser does not support the local explainer video.
+            </video>
+          </article>
+          <div id="processFlow" class="process-flow"></div>
+          <div class="how-grid"><article class="panel"><span class="kicker">WHEN YOU PRESS PLAY</span><h3>The city begins to change</h3><ol class="flow-list"><li>Simulation clock advances</li><li>Bins accumulate waste</li><li>Prediction and risk update</li><li>Priority queue recalculates</li><li>A truck is assigned</li><li>Route appears and vehicle moves</li><li>Collection reduces bin fill</li><li>Analytics record the result</li></ol></article><article class="panel"><span class="kicker">WHY IT IS A DIGITAL TWIN</span><h3>One state, many connected views</h3><p>Every map marker, metric, route, alert, prediction, and chart reads from the same local simulation state. Nothing claims to be a live municipal measurement.</p><div class="callout"><b>Simple idea</b><span>The city changes → the model predicts → the system acts → you see the result.</span></div></article></div>
+        </section>
+      </main>
+
+      <div class="global-controls"><button id="quickPlay" class="round-btn" aria-label="Play simulation">▶</button><div><small id="quickStatus">SIMULATION PAUSED</small><strong id="quickClock">08:00</strong></div><div class="timeline"><i id="timelineFill"></i></div><button class="text-btn" data-page-link="simulation">Open controls</button></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
