@@ -52,6 +52,8 @@ You can also double-click `index.html`. The local-server method above is more re
 - Guided/Visitor Demo with a 10-step visual story, WHY explanations, and demo reset
 - Live AI decision log, truck load/remaining capacity, current/next target, and route versions
 - Digital Twin Physical, Data, and AI map layers
+- Simulator area profiles showing commercial, mixed-use, industrial, and residential intensity
+- Commercial intensity contributes to deterministic waste growth and transparent zone priority
 - AI Decision Lab that runs what-if scenarios on copied state without changing the live simulation
 - Scenario comparison, minimum required fleet analysis, and one-click City Crisis
 - Citizen waste reporting, rule-based waste classification, assignment, and resolution timeline
@@ -64,6 +66,16 @@ You can also double-click `index.html`. The local-server method above is more re
 - Embedded 28-second local MP4 explainer video
 - JSON report export
 - No cloud, external APIs, accounts, or internet connection required
+
+## Simulated area assumptions
+
+The simulator labels **Central Area** and **Jalna Road** as the most commercially active zones. **CIDCO** is mixed commercial/residential, **Beed Bypass** is logistics/mixed use, **Waluj** is industrial, and **Urban Fringe** is mostly residential. These are transparent demonstration assumptions, not official municipal classifications or live statistics.
+
+## Homepage image credits
+
+- Aurangabad Bibi ka Maqbara — Shishirdasika, CC BY-SA 4.0, Wikimedia Commons
+- Waste collection truck — W84jon, CC0, Wikimedia Commons
+- Public waste-segregation bins — MaplesyrupSushi, CC BY-SA 4.0, Wikimedia Commons
 
 ## Project files
 

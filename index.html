@@ -10,6 +10,13 @@
 </head>
 <body>
   <div id="landing" class="landing">
+    <div class="landing-photo-bg" aria-hidden="true">
+      <img class="landing-city-photo" src="assets/aurangabad-hero.webp" alt="" />
+      <div class="landing-photo-pair">
+        <img src="assets/waste-truck.webp" alt="" />
+        <img src="assets/smart-bins.webp" alt="" />
+      </div>
+    </div>
     <div class="landing-grid" aria-hidden="true"></div>
     <header class="landing-nav shell">
       <a class="brand" href="#home" aria-label="AI-WasteTwin home"><span class="brand-mark">AW</span><span>AI-WasteTwin</span></a>
@@ -29,7 +36,7 @@
       <div class="hero-visual" aria-label="Stylized simulated city network">
         <svg viewBox="0 0 640 520" role="img" aria-label="Digital city map showing bins and routes">
           <defs>
-            <linearGradient id="routeGlow" x1="0" x2="1"><stop stop-color="#67a7ff"/><stop offset="1" stop-color="#65d69a"/></linearGradient>
+            <linearGradient id="routeGlow" x1="0" x2="1"><stop stop-color="#e2b83f"/><stop offset="1" stop-color="#65d69a"/></linearGradient>
             <filter id="softGlow"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
           </defs>
           <path class="hero-zone" d="M50 80L210 42l84 82-66 134L67 222Z"/>
@@ -48,7 +55,7 @@
         <div class="floating-card fc-two"><span class="signal blue"></span><div><b>Route adapted</b><small>T-07 assigned • 1.8 km</small></div></div>
       </div>
     </main>
-    <footer class="landing-footer shell"><span>Predict</span><i>→</i><span>Simulate</span><i>→</i><span>Optimize</span></footer>
+    <footer class="landing-footer shell"><div><span>Predict</span><i>→</i><span>Simulate</span><i>→</i><span>Optimize</span></div><small>Photos: Shishirdasika, W84jon and MaplesyrupSushi / Wikimedia Commons</small></footer>
   </div>
 
   <div id="app" class="app hidden">
@@ -134,10 +141,14 @@
             <div class="speed-control"><span>Speed</span><div id="speedBtns" class="segmented"><button data-speed="0.5">0.5×</button><button data-speed="1" class="active">1×</button><button data-speed="2">2×</button><button data-speed="5">5×</button><button data-speed="10">10×</button></div></div>
           </article>
           <div id="simSnapshot" class="sim-snapshot" aria-label="Current simulation summary"></div>
+          <article class="panel area-intelligence">
+            <div class="area-intro"><span class="kicker">SIMULATED AREA ACTIVITY</span><h3>Which zones are more commercial?</h3><p>Commercial intensity influences waste growth and zone priority. These are transparent simulation assumptions—not live municipal classifications.</p></div>
+            <div id="areaActivityGrid" class="area-activity-grid"></div>
+          </article>
           <div id="explainStrip" class="explain-strip decision-flow expert-only" aria-label="Plain-language simulation explanation"></div>
           <div class="sim-layout">
             <article class="panel sim-stage">
-              <div class="panel-head"><div><span class="kicker">LIVE CITY VIEW</span><h3>Watch the collection process</h3><p>Dots are bins. Blue vehicles move when the simulation advances.</p></div><strong id="stageTime">08:00</strong></div>
+              <div class="panel-head"><div><span class="kicker">LIVE CITY VIEW</span><h3>Watch the collection process</h3><p>Dots are bins. Gold vehicles move when the simulation advances.</p></div><strong id="stageTime">08:00</strong></div>
               <div id="simulationMap" class="sim-map"></div>
               <div id="guidedOverlay" class="guided-overlay" aria-live="polite"></div>
               <div class="sim-map-legend"><span><i class="lg green"></i>Healthy</span><span><i class="lg yellow"></i>Moderate</span><span><i class="lg orange"></i>High</span><span><i class="lg red"></i>Critical</span><span><i class="lg blue square"></i>Truck</span></div>
