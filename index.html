@@ -60,7 +60,7 @@
         <button class="nav-item" data-page="simulation"><span>▶</span>Simulation</button>
         <button class="nav-item" data-page="predictions"><span>✦</span>AI Predictions</button>
         <button class="nav-item" data-page="routes"><span>↝</span>Vehicles & Routes</button>
-        <button class="nav-item" data-page="scenarios"><span>⚗</span>Scenarios</button>
+        <button class="nav-item" data-page="scenarios"><span>⚗</span>AI Decision Lab</button>
         <button class="nav-item" data-page="analytics"><span>▥</span>Analytics</button>
         <button class="nav-item" data-page="how"><span>?</span>How It Works</button>
       </nav>
@@ -91,7 +91,7 @@
         </section>
 
         <section class="page" id="twin" data-title="Digital Twin">
-          <div class="section-heading twin-heading"><div><p class="eyebrow">OBSERVE THE CITY</p><h1>Digital Twin</h1><p>Local vector model of simulated zones, assets, routes, and risks.</p></div><div class="map-tools"><label><input id="showHotspots" type="checkbox" checked> Hotspots</label><label><input id="showRoutes" type="checkbox" checked> Routes</label><label><input id="showBins" type="checkbox" checked> Bins</label></div></div>
+          <div class="section-heading twin-heading"><div><p class="eyebrow">OBSERVE THE CITY</p><h1>Digital Twin</h1><p>Local vector model of simulated zones, assets, routes, and risks.</p></div><div class="map-tools"><div class="layer-switch" aria-label="Digital twin layers"><button data-twin-layer="physical" class="active">Physical</button><button data-twin-layer="data">Data</button><button data-twin-layer="ai">AI</button></div><label><input id="showHotspots" type="checkbox" checked> Hotspots</label><label><input id="showRoutes" type="checkbox" checked> Routes</label><label><input id="showBins" type="checkbox" checked> Bins</label></div></div>
           <article class="twin-stage">
             <div id="cityMap" class="city-map atlas-map"></div>
             <div class="map-filter-bar">
@@ -122,32 +122,33 @@
         <section class="page" id="simulation" data-title="Simulation Center">
           <div class="section-heading"><div><p class="eyebrow">SIMULATE</p><h1>Simulation Center</h1><p>See the city change in simple 10-minute steps—from rising waste to collection.</p></div><span id="runStatus" class="run-status paused">PAUSED</span></div>
           <article class="panel sim-quick-start">
-            <div class="quick-start-copy"><span class="kicker">NEW HERE? START WITH THIS</span><h2>Watch one complete collection story</h2><p>The guided example creates a critical bin, assigns a truck, changes the route during incidents, and records the result.</p></div>
-            <ol class="quick-start-steps">
-              <li><b>1</b><span><strong>Start</strong><small>Time moves forward</small></span></li>
-              <li><b>2</b><span><strong>Observe</strong><small>Bins and risks change</small></span></li>
-              <li><b>3</b><span><strong>Understand</strong><small>AI explains its action</small></span></li>
-            </ol>
-            <button id="guidedDemoBtn" class="btn primary">▶ Run guided example</button>
+            <div class="quick-start-copy"><span class="kicker">60-SECOND VISUAL STORY</span><h2>Watch the system explain itself</h2><p>Prediction, dispatch, multi-bin collection, re-evaluation, smart dumping and route adaptation—shown automatically.</p></div>
+            <div class="mode-switch" aria-label="Presentation mode"><button id="visitorModeBtn" class="active">Guided / Visitor</button><button id="expertModeBtn">Expert</button></div>
+            <button id="guidedDemoBtn" class="btn primary demo-start">▶ START GUIDED DEMO</button>
+            <div class="demo-actions"><button id="demoPauseBtn" class="btn ghost compact" disabled>Pause</button><button id="demoSkipBtn" class="btn ghost compact" disabled>Skip step</button><button id="demoExitBtn" class="btn ghost compact" disabled>Exit demo</button></div>
           </article>
+          <div id="storyBar" class="story-bar" aria-label="Guided demo progress"></div>
           <article class="panel control-deck">
             <div class="control-label"><span class="kicker">MANUAL CONTROLS</span><small>One step equals 10 simulated minutes.</small></div>
             <div class="sim-controls"><button id="playBtn" class="btn primary">▶ Start simulation</button><button id="stepBtn" class="btn secondary">+10 min</button><button id="resetBtn" class="btn ghost">↺ Reset</button><button id="replayBtn" class="btn ghost">Replay run</button><button id="watchGuideBtn" class="btn ghost">▶ Watch video</button></div>
             <div class="speed-control"><span>Speed</span><div id="speedBtns" class="segmented"><button data-speed="0.5">0.5×</button><button data-speed="1" class="active">1×</button><button data-speed="2">2×</button><button data-speed="5">5×</button><button data-speed="10">10×</button></div></div>
           </article>
           <div id="simSnapshot" class="sim-snapshot" aria-label="Current simulation summary"></div>
-          <div id="explainStrip" class="explain-strip decision-flow" aria-label="Plain-language simulation explanation"></div>
+          <div id="explainStrip" class="explain-strip decision-flow expert-only" aria-label="Plain-language simulation explanation"></div>
           <div class="sim-layout">
             <article class="panel sim-stage">
               <div class="panel-head"><div><span class="kicker">LIVE CITY VIEW</span><h3>Watch the collection process</h3><p>Dots are bins. Blue vehicles move when the simulation advances.</p></div><strong id="stageTime">08:00</strong></div>
               <div id="simulationMap" class="sim-map"></div>
+              <div id="guidedOverlay" class="guided-overlay" aria-live="polite"></div>
               <div class="sim-map-legend"><span><i class="lg green"></i>Healthy</span><span><i class="lg yellow"></i>Moderate</span><span><i class="lg orange"></i>High</span><span><i class="lg red"></i>Critical</span><span><i class="lg blue square"></i>Truck</span></div>
               <div id="eventTicker" class="event-ticker"><span class="signal blue"></span><span>Ready. Start the simulation or advance one 10-minute step.</span></div>
             </article>
             <aside class="sim-side">
-              <article class="panel cycle-panel"><span class="kicker">THIS 10-MINUTE CYCLE</span><div id="currentStep" class="current-step"></div></article>
+              <article class="panel live-decision-panel"><span class="kicker">LIVE AI DECISION</span><div id="liveDecision" class="live-decision"></div><button id="whyBtn" class="why-btn">WHY?</button><div id="whyPanel" class="why-panel hidden"></div></article>
+              <article class="panel truck-telemetry-panel"><span class="kicker">ACTIVE TRUCK</span><div id="truckTelemetry" class="truck-telemetry"></div></article>
+              <article class="panel cycle-panel expert-only"><span class="kicker">THIS 10-MINUTE CYCLE</span><div id="currentStep" class="current-step"></div></article>
               <article class="panel try-event-panel"><span class="kicker">TRY A CHANGE</span><h3>See the system adapt</h3><p class="muted">Activate one incident and then advance the simulation.</p><div class="sim-event-buttons"><button data-sim-incident="rain">☂ Heavy rain</button><button data-sim-incident="road">⊘ Road closure</button><button data-sim-incident="breakdown">⚠ Truck breakdown</button></div></article>
-              <article class="panel"><span class="kicker">WHAT JUST HAPPENED?</span><div id="eventLog" class="event-log"></div></article>
+              <article class="panel decision-log-panel"><span class="kicker">AI DECISION LOG</span><div id="eventLog" class="event-log"></div></article>
             </aside>
           </div>
           <details class="panel model-details">
@@ -172,11 +173,14 @@
           <div class="routes-grid"><article class="panel span-2"><div class="panel-head"><div><span class="kicker">FLEET STATUS</span><h3>Collection vehicles</h3></div></div><div class="table-wrap"><table><thead><tr><th>Vehicle</th><th>Status</th><th>Load</th><th>Assigned bin</th><th>ETA</th></tr></thead><tbody id="vehicleTable"></tbody></table></div></article><article class="panel route-compare"><div class="panel-head"><div><span class="kicker">ROUTE COMPARISON</span><h3>Fixed vs optimized</h3></div></div><div id="routeComparison"></div></article><article class="panel span-2"><div class="panel-head"><div><span class="kicker">PROCESSING NETWORK</span><h3>Facility load balancing</h3></div></div><div id="facilityGrid" class="facility-grid"></div></article></div>
         </section>
 
-        <section class="page" id="scenarios" data-title="Scenario Lab">
-          <div class="section-heading"><div><p class="eyebrow">ADAPT</p><h1>Scenario Lab</h1><p>Change local conditions and see the shared simulation react.</p></div><button id="runScenario" class="btn primary">Run Scenario</button></div>
-          <div class="scenario-layout"><article class="panel scenario-controls"><h3>Scenario conditions</h3><label>Waste generation <output id="wasteOut">+0%</output><input id="wasteRange" type="range" min="0" max="80" value="0" step="10"></label><label>Rainfall <select id="rainSelect"><option value="none">None</option><option value="light">Light</option><option value="heavy">Heavy</option></select></label><label>Festival <select id="festivalSelect"><option value="off">Off</option><option value="on">On — Central Area</option></select></label><label>Road closures <output id="roadOut">0</output><input id="roadRange" type="range" min="0" max="3" value="0"></label><label>Available trucks <output id="truckOut">8</output><input id="truckRange" type="range" min="3" max="8" value="8"></label><label>Processing capacity <output id="capacityOut">100%</output><input id="capacityRange" type="range" min="50" max="100" value="100" step="10"></label></article><article class="panel span-2"><div class="panel-head"><div><span class="kicker">PROJECTED IMPACT</span><h3>Scenario outcome</h3></div><span id="scenarioName" class="chip">BASELINE</span></div><div id="scenarioResults" class="scenario-results"></div><div id="impactChart" class="chart"></div></article></div>
-          <div class="incident-grid"><button data-incident="rain" class="incident-card"><span>☂</span><b>Heavy Rain</b><small>Faster fill • slower travel</small></button><button data-incident="festival" class="incident-card"><span>✦</span><b>Festival</b><small>Central waste surge</small></button><button data-incident="road" class="incident-card"><span>⊘</span><b>Road Closure</b><small>Route recalculation</small></button><button data-incident="breakdown" class="incident-card"><span>⚠</span><b>Truck Breakdown</b><small>Vehicle reassignment</small></button><button data-incident="surge" class="incident-card"><span>↗</span><b>Waste Surge</b><small>Priority spike</small></button><button data-incident="facility" class="incident-card"><span>▥</span><b>Facility Reduction</b><small>Load rebalancing</small></button></div>
-          <article class="panel factors-panel"><div class="panel-head"><div><span class="kicker">ACTIVE FACTORS</span><h3>What changes the simulation?</h3></div></div><div id="factorGrid" class="factor-grid"></div></article>
+        <section class="page" id="scenarios" data-title="AI Decision Lab">
+          <div class="section-heading"><div><p class="eyebrow">PLAN WITHOUT CHANGING THE LIVE TWIN</p><h1>AI Decision Lab</h1><p>Run deterministic what-if plans on a copy of the current city state.</p></div><button id="runScenario" class="btn primary">Run What-If Plan</button></div>
+          <div class="lab-safety"><span>LIVE TWIN PROTECTED</span><p>Decision Lab calculations never modify the current simulation.</p></div>
+          <div class="scenario-layout"><article class="panel scenario-controls"><h3>Planning inputs</h3><label>Waste generation <output id="wasteOut">+0%</output><input id="wasteRange" type="range" min="0" max="100" value="0" step="10"></label><label>Rainfall <select id="rainSelect"><option value="none">None</option><option value="light">Light</option><option value="heavy">Heavy</option></select></label><label>Festival <select id="festivalSelect"><option value="off">Off</option><option value="on">On — Central Area</option></select></label><label>Road closures <output id="roadOut">0</output><input id="roadRange" type="range" min="0" max="3" value="0"></label><label>Available trucks <output id="truckOut">8</output><input id="truckRange" type="range" min="2" max="8" value="8"></label><label>Truck failures <output id="failureOut">0</output><input id="failureRange" type="range" min="0" max="3" value="0"></label><label>Processing capacity <output id="capacityOut">100%</output><input id="capacityRange" type="range" min="40" max="100" value="100" step="10"></label></article><article class="panel span-2"><div class="panel-head"><div><span class="kicker">SIMULATION ESTIMATE</span><h3>Projected outcome</h3></div><span id="scenarioName" class="chip">BASELINE COPY</span></div><div id="scenarioResults" class="scenario-results"></div><div id="impactChart" class="chart"></div></article></div>
+          <div class="lab-grid"><article class="panel"><span class="kicker">COMPARE PLANS</span><h3>Normal vs disruption</h3><div class="preset-row"><button data-lab-preset="normal">Normal</button><button data-lab-preset="festival">Festival</button><button data-lab-preset="rain">Heavy Rain</button><button data-lab-preset="shortage">Resource Shortage</button></div><div id="scenarioCompare" class="scenario-compare"></div></article><article class="panel"><span class="kicker">MINIMUM FLEET ANALYSIS</span><h3>Find Required Trucks</h3><div class="fleet-targets"><label>Max overflow risk <input id="targetRisk" type="number" value="5" min="1" max="50">%</label><label>Max delay <input id="targetDelay" type="number" value="30" min="10" max="90"> min</label></div><button id="findFleetBtn" class="btn secondary">Find minimum simulated fleet</button><div id="fleetResult" class="fleet-result"></div></article></div>
+          <div class="incident-grid"><button data-incident="rain" class="incident-card"><span>☂</span><b>Heavy Rain</b><small>Faster fill • slower travel</small></button><button data-incident="festival" class="incident-card"><span>✦</span><b>Festival</b><small>Central waste surge</small></button><button data-incident="road" class="incident-card"><span>⊘</span><b>Road Closure</b><small>Route recalculation</small></button><button data-incident="breakdown" class="incident-card"><span>⚠</span><b>Truck Breakdown</b><small>Vehicle reassignment</small></button><button data-incident="surge" class="incident-card"><span>↗</span><b>Waste Surge</b><small>Priority spike</small></button><button data-incident="facility" class="incident-card"><span>▥</span><b>Facility Reduction</b><small>Load rebalancing</small></button><button id="cityCrisisBtn" class="incident-card crisis"><span>!</span><b>CITY CRISIS</b><small>Combined emergency</small></button></div>
+          <article class="panel factors-panel"><div class="panel-head"><div><span class="kicker">LIVE-TWIN FACTORS</span><h3>Current conditions</h3></div></div><div id="factorGrid" class="factor-grid"></div></article>
+          <div class="lab-grid citizen-grid"><article class="panel"><span class="kicker">CITIZEN REPORTING</span><h3>Report Waste</h3><form id="reportForm" class="report-form"><label>Location<input id="reportLocation" required placeholder="Zone or landmark"></label><label>Issue type<select id="reportType"><option>Mixed waste</option><option>Organic</option><option>Plastic</option><option>E-waste</option><option>Hazardous</option></select></label><label>Description<textarea id="reportDescription" rows="2" placeholder="Optional details"></textarea></label><label>Optional image<input id="reportImage" type="file" accept="image/*"></label><button class="btn secondary" type="submit">Submit simulated report</button></form></article><article class="panel"><span class="kicker">REPORT FLOW</span><h3>Classification and resolution</h3><div id="reportTimeline" class="report-timeline"></div></article></div>
         </section>
 
         <section class="page" id="analytics" data-title="Analytics">
@@ -200,6 +204,13 @@
       </main>
 
       <div class="global-controls"><button id="quickPlay" class="round-btn" aria-label="Play simulation">▶</button><div><small id="quickStatus">SIMULATION PAUSED</small><strong id="quickClock">08:00</strong></div><div class="timeline"><i id="timelineFill"></i></div><button class="text-btn" data-page-link="simulation">Open controls</button></div>
+      <button id="copilotBtn" class="copilot-btn" aria-label="Open AI Copilot">✦</button>
+      <aside id="copilotDrawer" class="copilot-drawer" aria-label="AI Copilot">
+        <header><div><span class="kicker">CURRENT-STATE ASSISTANT</span><h3>AI Copilot</h3></div><button id="copilotClose" aria-label="Close">×</button></header>
+        <p>Answers use the current simulated city state.</p>
+        <div class="copilot-prompts"><button data-copilot="next">Which bins should be collected next?</button><button data-copilot="truck">Why was this truck selected?</button><button data-copilot="skip">Why was a lower-risk bin skipped?</button><button data-copilot="breakdown">What if the active truck breaks down?</button><button data-copilot="facility">Which dump site should be used?</button></div>
+        <div id="copilotAnswer" class="copilot-answer">Select a question to inspect the current state.</div>
+      </aside>
     </div>
   </div>
 

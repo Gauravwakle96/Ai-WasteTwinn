@@ -43,22 +43,30 @@ You can also double-click `index.html`. The local-server method above is more re
 
 - Shared centralized simulation state
 - 100 simulated bins with 7 fill levels
-- Physically consistent 10-minute waste-generation updates
-- Explainable 90-minute forecasts, overflow time, risk, and normalized priority score
-- Capacity-aware assignment for 8 simulated collection vehicles
-- Incident-aware ETA, movement, route distance, collection, and facility redirection
+- Deterministic 10-minute waste-generation updates and historical replay
+- Transparent priority scoring from overflow risk, fill, growth, zone, route efficiency, and incidents
+- Predictive 90-minute overflow warnings and pre-overflow dispatch
+- Dynamic multi-bin collection with re-evaluation after every pickup and a 90% operating threshold
+- Smart dump-site selection using distance, capacity, traffic, availability, and waste compatibility
+- Continuous route replanning after collection, closures, traffic, breakdowns, and facility changes
+- Guided/Visitor Demo with a 10-step visual story, WHY explanations, and demo reset
+- Live AI decision log, truck load/remaining capacity, current/next target, and route versions
+- Digital Twin Physical, Data, and AI map layers
+- AI Decision Lab that runs what-if scenarios on copied state without changing the live simulation
+- Scenario comparison, minimum required fleet analysis, and one-click City Crisis
+- Citizen waste reporting, rule-based waste classification, assignment, and resolution timeline
+- Circular-economy simulation estimates for recovery and material streams
+- Current-state AI Copilot for operational questions
 - Local SVG city map and animated routes
 - Play, pause, reset, step, speed, and replay controls
-- Plain-language “What / Why / AI action / Next” explanation panel
 - Heavy rain, festival, road closure, breakdown, waste surge, and facility incidents
-- Scenario controls and analytics
-- Simulated AI vs fixed-scheduling comparison
+- Expanded simulated analytics and AI vs fixed-scheduling comparison
 - Embedded 28-second local MP4 explainer video
 - JSON report export
 - No cloud, external APIs, accounts, or internet connection required
 
 ## Project files
 
-- `index.html` — app structure and all seven sections
+- `index.html` — app structure, Guided Demo, Decision Lab, reports, and Copilot
 - `styles.css` — responsive control-center design
-- `app.js` — simulation engine, predictions, routing, incidents, and analytics
+- `app.js` — shared simulation engine, predictions, dynamic routing, incidents, Decision Lab, and analytics
