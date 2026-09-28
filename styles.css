@@ -63,10 +63,10 @@
 
 /* v6: minimal forest, yellow and gold visual system */
 .landing-photo-bg{position:absolute;inset:0;z-index:0;overflow:hidden;pointer-events:none}
-.landing-city-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.30;filter:saturate(.68) sepia(.18) hue-rotate(50deg) contrast(1.05)}
+.landing-city-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.30;filter:saturate(.48) sepia(.12) brightness(.82) contrast(1.08)}
 .landing-photo-bg:after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(5,15,9,.97) 0%,rgba(5,15,9,.82) 44%,rgba(5,15,9,.48) 72%,rgba(5,15,9,.82) 100%),linear-gradient(0deg,rgba(5,15,9,.92),transparent 45%,rgba(5,15,9,.52))}
-.landing-photo-pair{position:absolute;right:4vw;top:20%;width:min(38vw,560px);display:grid;grid-template-columns:1fr 1fr;gap:12px;opacity:.50;transform:rotate(-2deg);filter:saturate(.72) sepia(.14) hue-rotate(35deg)}
-.landing-photo-pair img{width:100%;height:230px;object-fit:cover;border:1px solid rgba(240,210,91,.28);border-radius:10px;box-shadow:var(--shadow)}
+.landing-photo-pair{position:absolute;right:4vw;top:18%;width:min(40vw,600px);display:grid;grid-template-columns:1fr;gap:12px;opacity:.52;filter:saturate(.55) sepia(.08) brightness(.85)}
+.landing-photo-pair img{width:100%;height:310px;object-fit:cover;object-position:top;border:1px solid rgba(240,210,91,.28);border-radius:10px;box-shadow:var(--shadow)}
 .landing-grid{z-index:1;opacity:.10}
 .landing-nav,.hero,.landing-footer{position:relative;z-index:2}
 .landing-footer{justify-content:space-between}

@@ -21,8 +21,10 @@ A deterministic decision-support simulation for adaptive municipal waste collect
 > AI-WasteTwin is an **academic simulation prototype**. It uses synthetic city data and does not present live municipal measurements, verified savings, or field-tested AI accuracy.
 
 <p align="center">
-  <img src="assets/aurangabad-hero.webp" width="100%" alt="Bibi ka Maqbara in Chhatrapati Sambhajinagar, used as the AI-WasteTwin city context" />
+  <img src="assets/digital-twin-map.webp" width="100%" alt="AI-WasteTwin Digital Twin city map" />
 </p>
+
+<p align="center"><em>Project-generated Digital Twin visualization</em></p>
 
 ---
 
@@ -53,7 +55,6 @@ A deterministic decision-support simulation for adaptive municipal waste collect
 - [Data and AI transparency](#data-and-ai-transparency)
 - [Current limitations](#current-limitations)
 - [Roadmap](#roadmap)
-- [Image credits](#image-credits)
 - [Author](#author)
 
 ---
@@ -593,9 +594,8 @@ Ai-WasteTwinn/
 ├── README.md                      # Project documentation
 └── assets/
     ├── ai-wastetwin-guide.mp4     # Local explainer video
-    ├── aurangabad-hero.webp       # Homepage city image
-    ├── waste-truck.webp           # Collection context image
-    └── smart-bins.webp            # Waste-bin context image
+    ├── digital-twin-map.webp      # Project-generated city-map visual
+    └── simulation-center.webp     # Project-generated simulation visual
 ```
 
 ---
@@ -683,18 +683,6 @@ This transparency is part of the project's explainability objective.
 - Train and validate local forecasting models
 - Add secured municipal roles and audit logs
 - Conduct controlled pilot evaluation with real operators
-
----
-
-## Image credits
-
-Homepage photographs are stored locally for offline use.
-
-- [Aurangabad Bibi ka Maqbara](https://commons.wikimedia.org/wiki/File:Aurangabad_Bibi_ka_Maqbara.jpg) — Shishirdasika, **CC BY-SA 4.0**
-- [Waste collection truck](https://commons.wikimedia.org/wiki/File:Waste_collection_truck.jpg) — W84jon, **CC0**
-- [Public waste-segregation bins, Amritsar](https://commons.wikimedia.org/wiki/File:Photograph_of_public-waste_segregation_bins,_Amritsar,_Punjab,_India,_8_April_2023.jpg) — MaplesyrupSushi, **CC BY-SA 4.0**
-
-Images are sourced from Wikimedia Commons. The image licenses apply to the respective photographs.
 
 ---
 
