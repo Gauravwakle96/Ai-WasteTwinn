@@ -444,23 +444,13 @@ The current classification is rule-based. Waste type can influence facility comp
 
 ## Analytics
 
-The analytics section reports simulated operational outcomes including:
+The analytics section reports **local simulation outputs**, not live municipal measurements. Current-session values include bins collected, recorded overflow incidents, predicted-risk collections, simulated response time, vehicle utilization, dump trips, route distance, modeled operating cost, and modeled recovered waste. Assumptions such as the 46% recovery factor and ₹1.60/km cost coefficient are illustrative model parameters, not calibrated local costs or verified savings.
 
-- bins collected;
-- overflow events;
-- predicted overflows prevented;
-- average response time;
-- vehicle utilization;
-- average bins per dump trip;
-- dump trips;
-- total route distance;
-- simulated fuel or operating cost;
-- recovered waste; and
-- facility load.
+### Fixed-schedule baseline status
 
-### AI versus fixed scheduling
+The fixed-scheduling comparison is **not yet measured**. The interface must not infer fixed-schedule results by multiplying adaptive metrics or by adding estimated incidents. A defensible comparison requires two policy runs starting from equivalent cloned city states, with the same random seed, demand assumptions, fleet, processing capacity, and simulation horizon. Until that paired experiment is implemented and tested, the fixed-schedule column is labelled `Not measured`; do not claim a percentage improvement or verified savings.
 
-Both approaches can be compared from the same simulated starting conditions. This supports a fairer demonstration of route distance, overflow, delay and utilization without presenting the results as real municipal statistics.
+The adaptive values displayed alongside it describe the current session only and are not a paired experimental result.
 
 ---
 
@@ -651,6 +641,8 @@ This transparency is part of the project's explainability objective.
 
 ## Current limitations
 
+- Fixed-scheduling baseline is not yet measured in a paired, same-initial-state experiment.
+- Simulated cost, recovery and service metrics are illustrative parameters, not locally calibrated or field-validated outcomes.
 - Synthetic city, traffic and waste data
 - Formula-based forecast rather than a calibrated local ML model
 - Simplified route geometry and traffic representation

@@ -368,7 +368,7 @@
     if(config.rain==='heavy')copy.incidents.push({type:'rain'});if(config.festival)copy.incidents.push({type:'festival'});if(config.closures)copy.incidents.push({type:'road'});
     let served=0,overflowEvents=0,routeDistance=0,peakCritical=0;
     for(let step=0;step<9;step++){
-      copy.bins.forEach(b=>{const generated=b.rate*(TICK_MINUTES/60)*activeModFor(b,copy);b.fill=clamp(b.fill+generated/b.capacity*100,0,100);if(b.fill>=100)overflowEvents++});
+      copy.bins.forEach(b=>{const wasOverflowed=b.fill>=100;const generated=b.rate*(TICK_MINUTES/60)*activeModFor(b,copy);b.fill=clamp(b.fill+generated/b.capacity*100,0,100);if(!wasOverflowed&&b.fill>=100)overflowEvents++});
       recalculate(copy);peakCritical=Math.max(peakCritical,copy.bins.filter(b=>b.risk==='Critical').length);
       const queue=[...copy.bins].sort((a,b)=>b.priority-a.priority).filter(b=>b.priority>=58);
       for(let t=0;t<fleet;t++){
@@ -397,7 +397,53 @@
     $('#reportTimeline').innerHTML=state.reports.length?state.reports.map(r=>`<div class="report-item"><b>${r.location}</b><span>${r.type} • ${r.severity}</span><div>${['Reported','Verified','Assigned','Dispatched','Collected','Resolved'].map((s,i)=>`<i class="${i<=r.step?'done':''}">${s}</i>`).join('')}</div></div>`).join(''):'<p class="muted">No citizen reports in this simulated session.</p>';
     $$('.incident-card').forEach(b=>b.classList.toggle('active',state.incidents.some(i=>i.type===b.dataset.incident)));$$('[data-sim-incident]').forEach(b=>b.classList.toggle('active',state.incidents.some(i=>i.type===b.dataset.simIncident)))
   }
-  function renderAnalytics(){const m=currentMetrics(),fixedDistance=state.routeDistance*1.3,fixedTrips=Math.max(state.dumpTrips,state.binsCollected),fixedDelay=m.avgTime*1.35;$('#analyticsMetrics').innerHTML=[metricCard('Bins collected',state.binsCollected,'Simulation total'),metricCard('Overflow events',state.overflowIncidents,'Recorded locally',state.overflowIncidents?'up':'good'),metricCard('Overflow prevented',state.overflowPrevented,'Predicted-risk collections'),metricCard('Avg response time',`${fmt(m.avgTime)} min`,'Simulation estimate'),metricCard('Truck utilization',`${fmt(m.utilization)}%`,'Active fleet'),metricCard('Bins / dump trip',fmt(m.avgBinsPerTrip,1),'Multi-bin routing'),metricCard('Dump trips',state.dumpTrips,'Facility visits'),metricCard('Route distance',`${fmt(state.routeDistance,1)} km`,'Adaptive routing'),metricCard('Simulated fuel / cost',`₹${fmt(state.simulatedCost,0)}`,'Model estimate only'),metricCard('Waste recovered',`${fmt(state.recoveredWaste,2)} t`,'Simulated 46% recovery')].join('');const gauges=[['Vehicle utilization',m.utilization],['Service level',state.serviceLevel],['Facility utilization',state.facilities.reduce((s,f)=>s+f.currentLoad,0)/state.facilities.reduce((s,f)=>s+f.capacity*state.processingCapacity,0)*100],['Bins below critical',100-m.critical]];$('#serviceGauges').innerHTML=gauges.map(g=>`<div class="gauge-item"><header><span>${g[0]}</span><b>${fmt(g[1])}%</b></header><div class="bar-track"><i style="width:${g[1]}%;background:${g[1]>80?'var(--green)':g[1]>55?'var(--yellow)':'var(--red)'}"></i></div></div>`).join('');const rows=[['Collection delay',`${fmt(fixedDelay)} min`,`${fmt(m.avgTime)} min`],['Overflow incidents',Math.max(state.overflowIncidents+Math.ceil(m.overflow/15),state.overflowIncidents),state.overflowIncidents],['Vehicle utilization',`${fmt(Math.max(35,m.utilization*.75))}%`,`${fmt(m.utilization)}%`],['Route distance',`${fmt(fixedDistance,1)} km`,`${fmt(state.routeDistance,1)} km`],['Dump trips',fixedTrips,state.dumpTrips],['Bins per trip','1.0',fmt(m.avgBinsPerTrip,1)],['Service level',`${fmt(Math.max(55,state.serviceLevel-9))}%`,`${fmt(state.serviceLevel)}%`]];$('#comparisonGrid').innerHTML=`<div class="head">SIMULATED RESULT</div><div class="head">Fixed scheduling</div><div class="head">AI dynamic</div>${rows.map(r=>`<div>${r[0]}</div><div>${r[1]}</div><div class="ai-value">${r[2]}</div>`).join('')}`}
+  function renderAnalytics(){
+    const m=currentMetrics();
+    $('#analyticsMetrics').innerHTML=[
+      metricCard('Bins collected',state.binsCollected,'Simulation total'),
+      metricCard('Overflow events',state.overflowIncidents,'Recorded locally',state.overflowIncidents?'up':'good'),
+      metricCard('Overflow prevented',state.overflowPrevented,'Predicted-risk collections'),
+      metricCard('Avg response time',`${fmt(m.avgTime)} min`,'Simulation estimate'),
+      metricCard('Truck utilization',`${fmt(m.utilization)}%`,'Active fleet'),
+      metricCard('Bins / dump trip',fmt(m.avgBinsPerTrip,1),'Multi-bin routing'),
+      metricCard('Dump trips',state.dumpTrips,'Facility visits'),
+      metricCard('Route distance',`${fmt(state.routeDistance,1)} km`,'Adaptive routing'),
+      metricCard('Simulated fuel / cost',`₹${fmt(state.simulatedCost,0)}`,'Model estimate only'),
+      metricCard('Waste recovered',`${fmt(state.recoveredWaste,2)} t`,'Simulated 46% recovery')
+    ].join('');
+
+    const facilityCapacity=state.facilities.reduce((sum,f)=>sum+f.capacity*state.processingCapacity,0);
+    const facilityLoad=state.facilities.reduce((sum,f)=>sum+f.currentLoad,0);
+    const facilityUtilization=facilityCapacity>0?facilityLoad/facilityCapacity*100:0;
+    const gauges=[
+      ['Vehicle utilization',m.utilization],
+      ['Service level',state.serviceLevel],
+      ['Facility utilization',facilityUtilization],
+      ['Bins below critical',100-m.critical]
+    ];
+    $('#serviceGauges').innerHTML=gauges.map(g=>{
+      const value=clamp(Number(g[1])||0,0,100);
+      return `<div class="gauge-item"><header><span>${g[0]}</span><b>${fmt(value)}%</b></header><div class="bar-track"><i style="width:${value}%;background:${value>80?'var(--green)':value>55?'var(--yellow)':'var(--red)'}"></i></div></div>`;
+    }).join('');
+
+    /*
+      Evaluation-integrity safeguard:
+      Fixed-schedule results must come from a separate run with the same initial
+      state and the same horizon. Multiplying adaptive metrics does not create a
+      valid baseline, so this column stays explicitly unmeasured until a paired
+      policy experiment is implemented and tested.
+    */
+    const rows=[
+      ['Collection delay','Not measured',`${fmt(m.avgTime)} min`],
+      ['Overflow incidents','Not measured',state.overflowIncidents],
+      ['Vehicle utilization','Not measured',`${fmt(m.utilization)}%`],
+      ['Route distance','Not measured',`${fmt(state.routeDistance,1)} km`],
+      ['Dump trips','Not measured',state.dumpTrips],
+      ['Bins per trip','Not measured',fmt(m.avgBinsPerTrip,1)],
+      ['Service level','Not measured',`${fmt(state.serviceLevel)}%`]
+    ];
+    $('#comparisonGrid').innerHTML=`<div class="head">METRIC</div><div class="head">Fixed schedule<br><small>Not yet measured</small></div><div class="head">Adaptive simulation<br><small>Current session</small></div>${rows.map(r=>`<div>${r[0]}</div><div class="muted">${r[1]}</div><div class="ai-value">${r[2]}</div>`).join('')}`;
+  }
   function renderHow(){if($('#processFlow').children.length)return;$('#processFlow').innerHTML=processStages.map((s,i)=>`<article class="process-card"><span class="num">${String(i+1).padStart(2,'0')}</span><h3>${s[0]}</h3><p>${s[1]}</p></article>`).join('')}
   function renderAll(){renderControls();renderMetrics();renderAreaActivity();renderPriority();renderLevels();renderMaps();renderDetail();renderCharts();renderRecommendation();renderPrediction();renderSimulation();renderVehicles();renderScenarios();renderAnalytics();renderHow()}
 
