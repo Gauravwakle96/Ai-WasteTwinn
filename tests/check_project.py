@@ -42,7 +42,7 @@ def main():
         if value.startswith(("http://", "https://", "data:", "#", "mailto:", "javascript:")):
             continue
         local = (ROOT / value.split("?", 1)[0].split("#", 1)[0])
-        if local.suffix.lower() in {".js", ".css"}:
+        if local.suffix.lower() in {".js", ".css", ".svg", ".webp", ".mp4"}:
             require(local.is_file(), f"local asset referenced by HTML exists: {value}")
 
     print("\nAll static source-integrity checks passed.")

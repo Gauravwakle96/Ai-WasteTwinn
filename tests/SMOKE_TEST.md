@@ -10,6 +10,7 @@ From the repository root:
 node --check app.js
 python tests/check_project.py
 node --test tests/model_regressions.cjs
+node tests/scenario_validation.cjs
 ```
 
 The CI workflow runs the same checks on pushes and pull requests.
@@ -33,3 +34,7 @@ For automated browser regression checks, start the local server described below 
 ## What this checklist does not establish
 
 Passing these checks is not evidence of real-world waste reduction, prediction accuracy, calibrated financial savings, field validation, or production readiness. Those require independent paired experiments and external data validation.
+
+## Round 2 evidence
+
+See `docs/TECHYUG_ROUND2.md` for the unscripted live demo sequence and feature classification. Scenario output is a correctness observation from one deterministic trial per configuration. It is not an adaptive-versus-fixed performance comparison. Run `node tests/scenario_validation.cjs docs/validation-results.json` to refresh the recorded evidence for the current source.
