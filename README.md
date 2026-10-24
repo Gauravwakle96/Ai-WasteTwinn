@@ -13,6 +13,8 @@
 
 A deterministic decision-support simulation for adaptive municipal waste collection in **Chhatrapati Sambhajinagar, Maharashtra**.
 
+TECHYUG Round 2: [verification report](docs/ROUND2_REPORT.md) · [technical audit and live demo](docs/TECHYUG_ROUND2.md) · [recorded scenario observations](docs/validation-results.json) · [fair baseline experiment method](docs/BASELINE_EXPERIMENT.md).
+
 [Watch the local project guide](assets/ai-wastetwin-guide.mp4)
 
 </div>
@@ -237,25 +239,15 @@ Each bin receives a normalized score out of 100.
 
 | Decision factor | Maximum contribution |
 |---|---:|
-| Predicted overflow probability | 30 |
+| Formula-based overflow urgency index (not a calibrated probability) | 30 |
 | Current fill level | 25 |
 | Waste growth rate | 15 |
 | Zone importance | 10 |
-| Distance and route efficiency | 12 |
+| Straight-line proximity to an operational truck | 12 |
 | Special conditions | 8 |
 | **Total** | **100** |
 
-Example:
-
-```text
-Bin: B-104
-Current fill: 91%
-Overflow probability: 94%
-Growth: High
-Estimated distance: 1.2 km
-Priority: 92 / 100
-Decision: Collect
-```
+Contributions are displayed to two decimal places. The total score rounds the unrounded weighted sum; equal totals are ordered by bin ID. Vehicle IDs are checked sequentially, so the assignment heuristic does not guarantee the globally nearest truck or globally optimal collection tour.
 
 The interface exposes the score breakdown instead of presenting an unexplained result.
 
@@ -263,7 +255,7 @@ The interface exposes the score breakdown instead of presenting an unexplained r
 
 ## Dynamic multi-bin collection
 
-The main operational innovation is continuous re-evaluation after every pickup.
+A central design feature is continuous re-evaluation after every completed pickup.
 
 ### Conventional behavior
 
@@ -446,13 +438,13 @@ Waste categories include:
 - hazardous; and
 - mixed waste.
 
-The current classification is rule-based. Waste type can influence facility compatibility and routing recommendations.
+The current classification is rule-based. The report timeline is illustrative and advances every two simulation steps; it is not connected to physical vehicle dispatch, image inference or verification of real incidents. Actual bin collection and facility compatibility are handled separately by the collection engine.
 
 ---
 
 ## Analytics
 
-The analytics section reports **local simulation outputs**, not live municipal measurements. Current-session values include bins collected, recorded overflow incidents, predicted-risk collections, simulated response time, vehicle utilization, dump trips, route distance, modeled operating cost, and modeled recovered waste. Assumptions such as the 46% recovery factor and ₹1.60/km cost coefficient are illustrative model parameters, not calibrated local costs or verified savings.
+The analytics section reports **local simulation outputs**, not live municipal measurements. Average delay is calculated from completed collection events after bins join the priority queue. On-time collection percentage counts completed pickups made before 100% fill; it does not measure citywide coverage. Both show `Not measured` before the first observation. Bins-per-trip uses completed facility trips only. Forecast overflow share is the percentage of bins predicted to reach 100% in 90 minutes, while the per-bin urgency index remains an uncalibrated rule score. Partial pickups move mass but do not count as completed bin tasks. Current-session values include bins collected, recorded overflow incidents, predicted-risk collections, recorded simulated queue delay, vehicle utilization, dump trips, route distance, modeled operating cost, and modeled recovered waste. Assumptions such as the 46% recovery factor and ₹1.60/km cost coefficient are illustrative model parameters, not calibrated local costs or verified savings.
 
 ### Fixed-schedule baseline status
 
@@ -650,7 +642,7 @@ This transparency is part of the project's explainability objective.
 ## Current limitations
 
 - Fixed-scheduling baseline is not yet measured in a paired, same-initial-state experiment.
-- Simulated cost, recovery and service metrics are illustrative parameters, not locally calibrated or field-validated outcomes.
+- Cost and recovery coefficients are illustrative assumptions. Recorded delay and on-time pickup ratios are software model observations, not field validation. Bin fill is capped at 100%; escaped spill mass, stop service time and facility queues are not modeled.
 - Synthetic city, traffic and waste data
 - Formula-based forecast rather than a calibrated local ML model
 - Simplified route geometry and traffic representation
@@ -703,3 +695,7 @@ GitHub: [@Gauravwakle96](https://github.com/Gauravwakle96)
 **Local / Offline · Simulated Data · Explainable Logic**
 
 </div>
+
+## Deterministic Copilot
+
+The Copilot uses predefined question buttons and current-state response templates. It does not call a language model or AI API. Seeded anomaly flags are synthetic fixtures, not a learned anomaly detector. The guided teaching demo scripts example inputs; use the manual simulation controls for an unscripted technical demonstration.

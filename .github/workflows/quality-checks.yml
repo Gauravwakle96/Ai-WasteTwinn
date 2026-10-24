@@ -25,3 +25,5 @@ jobs:
         run: python tests/check_project.py
       - name: Simulation regression tests
         run: node --test tests/model_regressions.cjs
+      - name: Deterministic scenario validation
+        run: node tests/scenario_validation.cjs
