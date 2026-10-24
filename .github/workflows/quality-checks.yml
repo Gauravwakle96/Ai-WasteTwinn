@@ -23,3 +23,5 @@ jobs:
         run: node --check app.js
       - name: Source integrity checks
         run: python tests/check_project.py
+      - name: Simulation regression tests
+        run: node --test tests/model_regressions.cjs

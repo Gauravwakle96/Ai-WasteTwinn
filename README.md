@@ -340,6 +340,10 @@ A route can be recalculated when:
 
 The interface records the route version and provides a plain-language reason for the update.
 
+Vehicles now follow a graph built from the same illustrative roads displayed on the map. Road intersections connect the graph; closed road edges are excluded from shortest-path planning. Travel time, ETA and recorded distance follow the resulting route, including the final approach to a facility. This is a synthetic road model rather than verified municipal GIS data.
+
+The full map fits all bins on a phone by default. After zooming, drag the map or focus it and use the arrow keys to pan. Bin markers can also be selected with Enter or Space.
+
 ---
 
 ## Smart facility selection
@@ -400,9 +404,9 @@ The lab runs on a **copy of the current city state**, so experiments do not alte
 
 - projected overflow risk;
 - number of critical bins;
-- collection delay;
-- required trucks;
-- processing-facility demand;
+- maximum collection delay, including bins still waiting;
+- active trucks after configured failures;
+- processing-facility load;
 - route distance; and
 - dump trips.
 
@@ -414,6 +418,10 @@ The lab can test different fleet sizes against targets such as:
 - maximum collection delay.
 
 The result is clearly labelled as a **simulation estimate**.
+
+Plans run nine 10-minute steps through the same movement, collection and unloading model as the live twin. Trucks retain their positions and loads between steps, and rainfall limits the distance they can travel. Minimum-fleet analysis reports total trucks and the active fleet remaining after failures; if no fleet meets both targets within 12 total trucks, it reports that outcome rather than inventing a recommendation.
+
+Guided-demo text follows the recorded dispatch and collection stages. Its final summary reports outstanding critical bins and actual facility visits. Completing or exiting a demo restores the parked fleet for continued simulation.
 
 ---
 

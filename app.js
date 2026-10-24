@@ -5,6 +5,7 @@
   const $$ = (s, root = document) => [...root.querySelectorAll(s)];
   const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
   const fmt = (n, d = 0) => Number(n).toFixed(d);
+  const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
   const TICK_MINUTES = 10;
   const FORECAST_HOURS = 1.5;
   const CITY_UNITS_PER_KM = 50;
@@ -54,11 +55,110 @@
     {stage:'RE-EVALUATE',title:'AI RE-EVALUATES',message:'Nearby bins are scanned again using risk, distance and remaining capacity.',next:'Collect the best nearby bin'},
     {stage:'COLLECT',title:'DYNAMIC MULTI-BIN COLLECTION',message:'The truck continues to another suitable bin instead of dumping immediately.',next:'Check capacity again'},
     {stage:'DUMP',title:'SMART DUMP-SITE SELECTION',message:'The best available facility is selected using distance, load and availability.',next:'Adapt to disruption'},
-    {stage:'OPTIMIZE',title:'ROUTE REPLANNED',message:'A road disruption changes the route; the old plan is replaced automatically.',next:'Stabilize the city'},
-    {stage:'RESULT',title:'CITY STABILIZED',message:'The simulated result is recorded with fewer unnecessary dump trips.',next:'Review the decision log'}
+    {stage:'OPTIMIZE',title:'ROUTE REPLANNED',message:'A road disruption changes the route; the old plan is replaced automatically.',next:'Review the recorded outcome'},
+    {stage:'RESULT',title:'DEMO COMPLETE',message:'Review the recorded collections, facility visits and remaining risks.',next:'Review the decision log'}
   ];
   let timer = null, toastTimer = null, replayTimer = null;
-  let selectedBinId = null, demoMode = false, demoPaused = false, visitorMode = true, mapZoom = 1, currentTwinLayer = 'physical', labResults = null;
+  let selectedBinId = null, demoMode = false, demoPaused = false, visitorMode = true, mapZoom = 1, mapCenter = {x:500,y:340}, currentTwinLayer = 'physical', labResults = null;
+
+  // Build a connected graph from the same roads drawn on the map. Curves are
+  // sampled into short segments; intersections become shared routing nodes.
+  function sampleRoad(d){
+    const tokens=d.match(/[MLCS]|-?\d+(?:\.\d+)?/g),points=[];
+    let i=0,p={x:0,y:0},control=null;
+    const point=()=>({x:+tokens[i++],y:+tokens[i++]});
+    while(i<tokens.length){
+      const command=tokens[i++];
+      if(command==='M'||command==='L'){p=point();points.push(p);control=null;continue}
+      const a=p,c1=command==='S'&&control?{x:2*p.x-control.x,y:2*p.y-control.y}:command==='S'?p:point();
+      const c2=point(),b=point();
+      for(let n=1;n<=16;n++){
+        const t=n/16,u=1-t;
+        points.push({x:u*u*u*a.x+3*u*u*t*c1.x+3*u*t*t*c2.x+t*t*t*b.x,y:u*u*u*a.y+3*u*u*t*c1.y+3*u*t*t*c2.y+t*t*t*b.y});
+      }
+      p=b;control=c2;
+    }
+    return points;
+  }
+  function buildRoadGraph(){
+    const segments=[];
+    [...roads,...minorRoads].forEach((d,road)=>{
+      const points=sampleRoad(d);
+      points.slice(1).forEach((b,i)=>segments.push({a:points[i],b,road,cuts:[0,1]}));
+    });
+    const cross=(a,b)=>a.x*b.y-a.y*b.x;
+    for(let i=0;i<segments.length;i++)for(let j=i+1;j<segments.length;j++){
+      const a=segments[i],b=segments[j],r={x:a.b.x-a.a.x,y:a.b.y-a.a.y},s={x:b.b.x-b.a.x,y:b.b.y-b.a.y};
+      const denominator=cross(r,s);if(Math.abs(denominator)<1e-8)continue;
+      const offset={x:b.a.x-a.a.x,y:b.a.y-a.a.y},t=cross(offset,s)/denominator,u=cross(offset,r)/denominator;
+      if(t>=0&&t<=1&&u>=0&&u<=1){a.cuts.push(t);b.cuts.push(u)}
+    }
+    const nodes=[],edges=[],ids=new Map();
+    const node=p=>{
+      const key=`${p.x.toFixed(3)},${p.y.toFixed(3)}`;
+      if(!ids.has(key)){ids.set(key,nodes.length);nodes.push(p);edges.push([])}
+      return ids.get(key);
+    };
+    segments.forEach(segment=>{
+      const cuts=[...new Set(segment.cuts)].sort((a,b)=>a-b);
+      const points=cuts.map(t=>({x:segment.a.x+t*(segment.b.x-segment.a.x),y:segment.a.y+t*(segment.b.y-segment.a.y)}));
+      points.slice(1).forEach((b,i)=>{
+        const a=points[i],from=node(a),to=node(b),length=Math.hypot(a.x-b.x,a.y-b.y);
+        if(from===to||length<1e-6)return;
+        edges[from].push({to,length,road:segment.road});edges[to].push({to:from,length,road:segment.road});
+      });
+    });
+    return {nodes,edges};
+  }
+  const roadGraph=buildRoadGraph(),routeTrees=new Map();
+  const labCache=new WeakMap();
+  function routeTree(start,closures){
+    const key=`${start}:${closures}`;if(routeTrees.has(key))return routeTrees.get(key);
+    const distances=Array(roadGraph.nodes.length).fill(Infinity),previous=Array(distances.length).fill(-1),done=new Set();
+    distances[start]=0;
+    for(let n=0;n<distances.length;n++){
+      let from=-1,best=Infinity;
+      distances.forEach((distance,i)=>{if(!done.has(i)&&distance<best){from=i;best=distance}});
+      if(from<0)break;done.add(from);
+      roadGraph.edges[from].forEach(edge=>{
+        if(edge.road<closures)return;
+        const distance=best+edge.length;
+        if(distance<distances[edge.to]){distances[edge.to]=distance;previous[edge.to]=from}
+      });
+    }
+    const result={distances,previous};routeTrees.set(key,result);return result;
+  }
+  function planRoute(from,to,s=state){
+    const nearest=point=>{
+      let result=-1,best=Infinity;
+      roadGraph.nodes.forEach((node,i)=>{
+        if(!roadGraph.edges[i].some(edge=>edge.road>=s.roadClosures))return;
+        const distance=Math.hypot(point.x-node.x,point.y-node.y);
+        if(distance<best){result=i;best=distance}
+      });
+      return result;
+    };
+    const start=nearest(from),end=nearest(to);if(start<0||end<0)return null;
+    const tree=routeTree(start,s.roadClosures);if(!Number.isFinite(tree.distances[end]))return null;
+    const ids=[];for(let node=end;node!==-1;node=tree.previous[node]){ids.unshift(node);if(node===start)break}
+    const points=[{x:from.x,y:from.y},...ids.map(id=>({...roadGraph.nodes[id]})),{x:to.x,y:to.y}];
+    // Nearby assets on the same access street need only a short connector.
+    if(start===end)points.splice(1,points.length-2);
+    const distance=points.slice(1).reduce((sum,p,i)=>sum+Math.hypot(p.x-points[i].x,p.y-points[i].y),0);
+    return {points,distance:distance/CITY_UNITS_PER_KM};
+  }
+  function effectiveSpeed(s=state){return TRUCK_SPEED_KMH*(s.rain==='heavy'?.72:s.rain==='light'?.88:1)}
+  function setVehicleRoute(v,target,s=state){
+    const route=planRoute(v,target,s);if(!route)return false;
+    v.route=route.points;v.routeIndex=1;v.routeVersion++;
+    v.eta=Math.ceil(route.distance/effectiveSpeed(s)*60);return true;
+  }
+  function replanRoutes(s=state){
+    s.vehicles.filter(v=>v.status==='Collecting'||v.status==='Returning').forEach(v=>{
+      const target=v.assignedBin?s.bins.find(b=>b.id===v.assignedBin):s.facilities[v.facility];
+      if(target&&setVehicleRoute(v,target,s))v.lastDecision='Route recalculated using the currently open road network';
+    });
+  }
 
   function seeded(seed=2026){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return ((t^t>>>14)>>>0)/4294967296}}
   function makeInitialState(){
@@ -72,7 +172,7 @@
     });
     const vehicles=Array.from({length:8},(_,i)=>({id:`T-${String(i+1).padStart(2,'0')}`,x:115+i*14,y:600-i*5,capacity:2200,currentLoad:Math.round(rnd()*450),status:'Available',assignedBin:null,nextTarget:null,eta:0,progress:0,route:[],facility:i%2,collectedBins:[],routeVersion:0,lastDecision:'Waiting for assignment',dumpTrips:0}));
     const facilities=[{id:'DS-01',x:880,y:115,capacity:25,currentLoad:23.5,status:'Operational',traffic:.35,compatibility:['organic','plastic','paper','glass','metal','mixed']},{id:'DS-02',x:850,y:560,capacity:30,currentLoad:12.6,status:'Operational',traffic:.12,compatibility:['organic','plastic','paper','glass','metal','e-waste','hazardous','mixed']}];
-    const state={currentMinutes:480,speed:1,isRunning:false,isGuided:false,demoStep:0,tickCount:0,scenario:'Baseline',wasteModifier:1,rain:'none',festival:false,roadClosures:0,truckLimit:8,processingCapacity:1,bins,vehicles,facilities,incidents:[],wasteCollected:24.6,collectedThisTick:0,binsCollected:0,overflowPrevented:0,routeDistance:0,overflowIncidents:0,serviceLevel:91,dumpTrips:0,recoveredWaste:0,simulatedCost:0,reports:[],history:[],snapshots:[],logs:[{time:'08:00',text:'Local simulation initialized with a 10-minute model step.',type:'info'}]};
+    const state={currentMinutes:480,speed:1,isRunning:false,isGuided:false,demoStep:0,tickCount:0,scenario:'Baseline',wasteModifier:1,rain:'none',festival:false,roadClosures:0,truckLimit:8,processingCapacity:1,bins,vehicles,facilities,incidents:[],wasteCollected:0,collectedThisTick:0,binsCollected:0,overflowPrevented:0,routeDistance:0,overflowIncidents:0,serviceLevel:91,dumpTrips:0,recoveredWaste:0,simulatedCost:0,responseTimes:[],reports:[],history:[],snapshots:[],logs:[{time:'08:00',text:'Local simulation initialized with a 10-minute model step.',type:'info'}]};
     recalculate(state);
     recordHistory(state);
     return state;
@@ -85,6 +185,7 @@
   function riskOf(bin,s=state){const mins=overflowMinutes(bin,s);if(bin.fill>=91||mins<=60)return 'Critical';if(bin.fill>=76||mins<=120||bin.predicted>=91)return 'High';if(bin.fill>=46||bin.predicted>=76)return 'Medium';return 'Low'}
   function activeModFor(bin,s=state){let mod=s.wasteModifier;if(s.rain==='light')mod*=1.1;if(s.rain==='heavy')mod*=1.28;if(s.festival&&bin.zone==='Central Area')mod*=1.7;if(s.incidents.some(i=>i.type==='surge'))mod*=1.25;return mod}
   function recalculate(s=state){
+    s.modelVersion=(s.modelVersion||0)+1;
     s.bins.forEach(b=>{
       const mod=activeModFor(b,s);
       b.predicted=clamp(b.fill+(b.rate*FORECAST_HOURS/b.capacity*100*mod),0,100);
@@ -107,7 +208,7 @@
     const over=s.bins.filter(b=>b.fill>=100).length;
     s.serviceLevel=clamp(97-s.bins.filter(b=>b.risk==='Critical').length*.7-over*1.5-s.incidents.length*.6,55,99);
   }
-  function criticalBins(){return [...state.bins].sort((a,b)=>b.priority-a.priority)}
+  function criticalBins(s=state){return [...s.bins].sort((a,b)=>b.priority-a.priority)}
   function currentMetrics(s=state){
     const critical=s.bins.filter(b=>levelOf(b.fill)===7).length;
     const available=s.vehicles.filter(v=>v.status==='Available').length;
@@ -117,9 +218,9 @@
     const avgBinsPerTrip=s.dumpTrips?s.binsCollected/s.dumpTrips:s.binsCollected;
     return {critical,available,utilization,overflow,avgTime,avgBinsPerTrip};
   }
-  function logEvent(text,type='info'){
-    state.logs.unshift({time:timeText(),text,type}); state.logs=state.logs.slice(0,20);
-    const ticker=$('#eventTicker span:last-child'); if(ticker)ticker.textContent=text;
+  function logEvent(text,type='info',s=state){
+    s.logs.unshift({time:timeText(s.currentMinutes),text,type});s.logs=s.logs.slice(0,20);
+    const ticker=s===state?$('#eventTicker span:last-child'):null;if(ticker)ticker.textContent=text;
   }
   function snapshot(s=state){s.snapshots.push({time:s.currentMinutes,bins:s.bins.map(b=>({id:b.id,fill:b.fill,predicted:b.predicted,risk:b.risk,priority:b.priority})),vehicles:s.vehicles.map(v=>({...v,route:v.route.map(p=>({...p})),collectedBins:[...v.collectedBins],wasteTypes:[...(v.wasteTypes||[])]})),wasteCollected:s.wasteCollected,binsCollected:s.binsCollected,overflowPrevented:s.overflowPrevented,dumpTrips:s.dumpTrips});if(s.snapshots.length>36)s.snapshots.shift()}
   function recordHistory(s=state){
@@ -128,93 +229,106 @@
     if(s.history.length>48)s.history.shift();snapshot(s);
   }
   function binPayload(bin){return Math.max(0,(bin.fill-8)/100*bin.capacity)}
-  function facilityChoice(vehicle,wasteType='mixed'){
-    return state.facilities.map((f,i)=>{
-      const distance=Math.hypot(f.x-vehicle.x,f.y-vehicle.y)/CITY_UNITS_PER_KM;
-      const load=f.currentLoad/(f.capacity*state.processingCapacity);
-      const available=f.status==='Operational'&&load<1;
-      const compatible=f.compatibility?.includes(wasteType)||f.compatibility?.includes('mixed');
-      const score=distance*2+load*42+(f.traffic||0)*12+(available?0:100)+(compatible?0:35);
+  function facilityChoice(vehicle,wasteType='mixed',s=state){
+    const types=vehicle.wasteTypes?.length?vehicle.wasteTypes:[wasteType];
+    return s.facilities.map((f,i)=>{
+      const route=planRoute(vehicle,f,s),distance=route?.distance??Infinity;
+      const load=f.currentLoad/(f.capacity*s.processingCapacity);
+      const available=f.status==='Operational'&&f.currentLoad+vehicle.currentLoad/1000<=f.capacity*s.processingCapacity;
+      const compatible=types.every(type=>f.compatibility?.includes(type));
+      const score=distance*2+load*42+(f.traffic||0)*12;
       return {i,f,distance,load,available,compatible,score};
-    }).sort((a,b)=>a.score-b.score)[0]
+    }).filter(choice=>choice.available&&choice.compatible&&Number.isFinite(choice.distance)).sort((a,b)=>a.score-b.score)[0]
   }
-  function routeToFacility(v,reason='capacity threshold reached'){
-    const type=v.wasteTypes?.[0]||'mixed',choice=facilityChoice(v,type),old=state.facilities[v.facility];
-    v.facility=choice.i;v.status='Returning';v.assignedBin=null;v.nextTarget=null;v.routeVersion++;v.route=[{x:v.x,y:v.y},{x:choice.f.x,y:choice.f.y}];
+  function routeToFacility(v,reason='capacity threshold reached',s=state){
+    const type=v.wasteTypes?.[0]||'mixed',choice=facilityChoice(v,type,s),old=s.facilities[v.facility];
+    v.assignedBin=null;v.nextTarget=null;
+    if(!choice){v.status='Waiting';v.route=[];v.lastDecision='Waiting for an available, waste-compatible facility';return}
+    v.facility=choice.i;v.status='Returning';setVehicleRoute(v,choice.f,s);
     v.lastDecision=`${choice.f.id} selected: ${Math.round(choice.load*100)}% load, ${fmt(choice.distance,1)} km, compatible`;
-    logEvent(`${v.id} routed to ${choice.f.id} — ${reason}. ${old&&old.id!==choice.f.id?`${old.id} was less suitable.`:''}`,'ai');
+    logEvent(`${v.id} routed to ${choice.f.id} — ${reason}. ${old&&old.id!==choice.f.id?`${old.id} was less suitable.`:''}`,'ai',s);
   }
-  function eligibleCandidates(v,excludeId=null){
-    const assigned=new Set(state.vehicles.map(x=>x.assignedBin).filter(Boolean));
+  function eligibleCandidates(v,excludeId=null,s=state){
+    const assigned=new Set(s.vehicles.map(x=>x.assignedBin).filter(Boolean));
     const remaining=v.capacity-v.currentLoad;
-    return criticalBins().filter(b=>{
+    return criticalBins(s).filter(b=>{
       if(b.id===excludeId||assigned.has(b.id)||b.fill<45)return false;
       const payload=binPayload(b);if(payload>remaining)return false;
       const projected=(v.currentLoad+payload)/v.capacity;
       const emergency=b.overflowProbability>=EMERGENCY_RISK&&payload<=remaining;
       return (b.risk==='Critical'||b.risk==='High'||b.priority>=58)&&(projected<=OPERATIONAL_CAPACITY||emergency);
     }).map(b=>{
-      const distance=Math.hypot(v.x-b.x,v.y-b.y)/CITY_UNITS_PER_KM*(1+state.roadClosures*.2);
+      const distance=planRoute(v,b,s)?.distance??Infinity;
       const emergency=b.overflowProbability>=EMERGENCY_RISK;
       const score=b.priority-clamp(distance*3.5,0,28)+(emergency?12:0);
       return {b,distance,score,emergency,projected:(v.currentLoad+binPayload(b))/v.capacity};
-    }).sort((a,b)=>b.score-a.score||a.distance-b.distance)
+    }).filter(candidate=>Number.isFinite(candidate.distance)).sort((a,b)=>b.score-a.score||a.distance-b.distance)
   }
-  function assignVehicleToTarget(v,target,reason){
-    const distance=Math.hypot(v.x-target.x,v.y-target.y)/CITY_UNITS_PER_KM*(1+state.roadClosures*.2);
-    v.status='Collecting';v.assignedBin=target.id;v.progress=0;v.eta=Math.max(2,Math.round(distance/TRUCK_SPEED_KMH*60));v.routeVersion++;v.route=[{x:v.x,y:v.y},{x:target.x,y:target.y}];
-    const preview=eligibleCandidates(v,target.id)[0];v.nextTarget=preview?.b.id||null;
+  function assignVehicleToTarget(v,target,reason,s=state){
+    if(!setVehicleRoute(v,target,s))return;
+    const distance=planRoute(v,target,s).distance;
+    v.status='Collecting';v.assignedBin=target.id;v.progress=0;
+    const preview=eligibleCandidates(v,target.id,s)[0];v.nextTarget=preview?.b.id||null;
     v.lastDecision=`${target.id}: priority ${target.priority}/100, ${fmt(distance,1)} km, ${fmt((v.capacity-v.currentLoad)/v.capacity*100)}% capacity remaining`;
-    logEvent(`${v.id} selected ${target.id}. Reason: ${reason}; priority ${target.priority}/100; route v${v.routeVersion}.`,'ai');
+    logEvent(`${v.id} selected ${target.id}. Reason: ${reason}; priority ${target.priority}/100; route v${v.routeVersion}.`,'ai',s);
   }
-  function assignVehicles(){
-    state.vehicles.filter((v,i)=>i<state.truckLimit&&v.status==='Available').forEach(v=>{
-      const candidate=eligibleCandidates(v)[0];
-      if(!candidate){if(v.currentLoad/v.capacity>=.55)routeToFacility(v,'no suitable nearby bin');return}
-      assignVehicleToTarget(v,candidate.b,candidate.emergency?'emergency overflow override':'high risk + capacity fit + efficient route');
+  function assignVehicles(s=state){
+    s.vehicles.filter((v,i)=>i<s.truckLimit&&v.status==='Available').forEach(v=>{
+      const candidate=eligibleCandidates(v,null,s)[0];
+      if(!candidate){if(v.currentLoad/v.capacity>=.55)routeToFacility(v,'no suitable nearby bin',s);return}
+      assignVehicleToTarget(v,candidate.b,candidate.emergency?'emergency overflow override':'high risk + capacity fit + efficient route',s);
     });
   }
-  function moveVehicles(){
-    const slow=state.rain==='heavy'?0.72:state.rain==='light'?0.88:1;
-    const step=(TRUCK_SPEED_KMH*(TICK_MINUTES/60)*CITY_UNITS_PER_KM)*slow/(1+state.roadClosures*.2);
-    state.vehicles.forEach((v,i)=>{
-      if(i>=state.truckLimit&&v.status!=='Breakdown'){v.status='Maintenance';v.assignedBin=null;v.route=[];return}
+  function advanceVehicle(v,budget,s){
+    while(v.routeIndex<v.route.length){
+      const target=v.route[v.routeIndex],dx=target.x-v.x,dy=target.y-v.y,distance=Math.hypot(dx,dy),travel=Math.min(budget,distance);
+      if(distance>0){v.x+=dx/distance*travel;v.y+=dy/distance*travel}
+      s.routeDistance+=travel/CITY_UNITS_PER_KM;s.simulatedCost+=travel/CITY_UNITS_PER_KM*1.6;budget-=travel;
+      if(travel+1e-8<distance)break;
+      v.x=target.x;v.y=target.y;v.routeIndex++;
+      if(budget<=1e-8)break;
+    }
+    let remaining=0,last=v;
+    v.route.slice(v.routeIndex).forEach(p=>{remaining+=Math.hypot(last.x-p.x,last.y-p.y);last=p});
+    v.eta=Math.ceil(remaining/CITY_UNITS_PER_KM/effectiveSpeed(s)*60);
+    return v.routeIndex>=v.route.length;
+  }
+  function moveVehicles(s=state){
+    const step=effectiveSpeed(s)*(TICK_MINUTES/60)*CITY_UNITS_PER_KM;
+    s.vehicles.forEach((v,i)=>{
+      if(i>=s.truckLimit&&v.status!=='Breakdown'){v.status='Maintenance';v.assignedBin=null;v.route=[];return}
       if(v.status==='Breakdown'||v.status==='Maintenance')return;
+      if(v.status==='Waiting'){routeToFacility(v,'facility capacity rechecked',s);return}
       if(v.status==='Collecting'&&v.assignedBin){
-        const b=state.bins.find(x=>x.id===v.assignedBin);if(!b){v.status='Available';return}
-        const dx=b.x-v.x,dy=b.y-v.y,dist=Math.hypot(dx,dy);
-        if(dist<=step){
-          v.x=b.x;v.y=b.y;
-          const wasPredictedOverflow=b.predicted>=100||b.overflowProbability>=90;
+        const b=s.bins.find(x=>x.id===v.assignedBin);if(!b){v.status='Available';return}
+        if(advanceVehicle(v,step,s)){
+          const wasPredictedOverflow=b.fill<100&&(b.predicted>=100||b.overflowProbability>=90);
           const removed=Math.min(binPayload(b),v.capacity-v.currentLoad);
-          b.fill=clamp(b.fill-removed/b.capacity*100,8,100);b.lastCollected=timeText();
+          b.fill=clamp(b.fill-removed/b.capacity*100,8,100);b.lastCollected=timeText(s.currentMinutes);
           v.currentLoad+=removed;v.collectedBins.push(b.id);v.wasteTypes=(v.wasteTypes||[]).concat(b.wasteType);v.progress=0;
-          state.collectedThisTick+=removed;state.wasteCollected+=removed/1000;state.binsCollected++;if(wasPredictedOverflow)state.overflowPrevented++;
-          state.routeDistance+=dist/CITY_UNITS_PER_KM;state.simulatedCost+=dist/CITY_UNITS_PER_KM*1.6;
-          logEvent(`${v.id} collected ${b.id}; bin ${fmt(b.fill)}%, truck ${fmt(v.currentLoad/v.capacity*100)}%. Nearby bins re-evaluated.`,'success');
-          recalculate();
-          const next=eligibleCandidates(v,b.id)[0];
+          s.collectedThisTick+=removed;s.wasteCollected+=removed/1000;s.binsCollected++;if(wasPredictedOverflow)s.overflowPrevented++;
+          if(b.queuedAtMinutes!=null)(s.responseTimes??=[]).push(s.currentMinutes-b.queuedAtMinutes);
+          b.queuedAtMinutes=null;
+          logEvent(`${v.id} collected ${b.id}; bin ${fmt(b.fill)}%, truck ${fmt(v.currentLoad/v.capacity*100)}%. Nearby bins re-evaluated.`,'success',s);
+          recalculate(s);
+          const next=eligibleCandidates(v,b.id,s)[0];
           if(next){
             const emergency=next.emergency&&next.projected>OPERATIONAL_CAPACITY;
-            assignVehicleToTarget(v,next.b,emergency?'emergency override near capacity':'nearby high risk + low detour');
+            assignVehicleToTarget(v,next.b,emergency?'emergency override near capacity':'nearby high risk + low detour',s);
           }else{
-            routeToFacility(v,v.currentLoad/v.capacity>=OPERATIONAL_CAPACITY?'90% operational threshold reached':'no suitable nearby bin');
+            routeToFacility(v,v.currentLoad/v.capacity>=OPERATIONAL_CAPACITY?'90% operational threshold reached':'no suitable nearby bin',s);
           }
-        }else{
-          v.x+=dx/dist*step;v.y+=dy/dist*step;v.eta=Math.max(1,v.eta-TICK_MINUTES);
-          state.routeDistance+=step/CITY_UNITS_PER_KM;state.simulatedCost+=step/CITY_UNITS_PER_KM*1.6;
         }
       }else if(v.status==='Returning'){
-        let choice=facilityChoice(v,v.wasteTypes?.[0]||'mixed'),f=choice.f;
-        if(v.facility!==choice.i){const old=state.facilities[v.facility];v.facility=choice.i;v.routeVersion++;v.route=[{x:v.x,y:v.y},{x:f.x,y:f.y}];logEvent(`${v.id} redirected from ${old?.id||'facility'} to ${f.id}: better capacity and compatibility.`,'ai')}
-        const dx=f.x-v.x,dy=f.y-v.y,dist=Math.hypot(dx,dy);
-        if(dist<=step){
-          v.x=f.x;v.y=f.y;f.currentLoad=clamp(f.currentLoad+v.currentLoad/1000,0,f.capacity*state.processingCapacity);
-          state.recoveredWaste+=v.currentLoad/1000*.46;state.dumpTrips++;v.dumpTrips++;
+        const choice=facilityChoice(v,v.wasteTypes?.[0]||'mixed',s);
+        if(!choice){routeToFacility(v,'facility unavailable',s);return}
+        const f=s.facilities[v.facility];
+        if(!f||f.status!=='Operational'||f.currentLoad+v.currentLoad/1000>f.capacity*s.processingCapacity||!(v.wasteTypes||[]).every(type=>f.compatibility.includes(type))){routeToFacility(v,'facility capacity or compatibility changed',s);return}
+        if(advanceVehicle(v,step,s)){
+          f.currentLoad+=v.currentLoad/1000;
+          s.recoveredWaste+=v.currentLoad/1000*.46;s.dumpTrips++;v.dumpTrips++;
           v.currentLoad=0;v.status='Available';v.route=[];v.collectedBins=[];v.wasteTypes=[];v.lastDecision=`Unloaded at ${f.id}; ready for re-assignment`;
-          logEvent(`${v.id} unloaded at ${f.id}. Dynamic collection trip completed.`,'success')
-        }else{
-          v.x+=dx/dist*step;v.y+=dy/dist*step;state.routeDistance+=step/CITY_UNITS_PER_KM;state.simulatedCost+=step/CITY_UNITS_PER_KM*1.6;
+          logEvent(`${v.id} unloaded at ${f.id}. Dynamic collection trip completed.`,'success',s)
         }
       }
     });
@@ -226,38 +340,55 @@
     const b=state.bins.find(x=>x.id==='B-104'),v=state.vehicles.find(x=>x.id==='T-03');
     if(t===1){b.fill=76;b.rate=42;recalculate();logEvent('B-104 is filling faster than its expected local pattern.','alert')}
     if(t===2){b.fill=82;recalculate();logEvent(`B-104 predicted fill ${fmt(b.predicted)}%; future overflow detected.`,'ai')}
-    if(t===3){b.fill=92;recalculate();logEvent(`B-104 priority ${b.priority}/100 — moved to the front of the queue.`,'ai')}
+    if(t===3){b.fill=90;recalculate();logEvent(`B-104 priority ${b.priority}/100 — moved to the front of the queue.`,'ai')}
     if(t===4){
       state.vehicles.filter(x=>x.assignedBin===b.id).forEach(x=>{x.status='Available';x.assignedBin=null;x.route=[]});
       v.status='Available';v.x=b.x-35;v.y=b.y+18;assignVehicleToTarget(v,b,'guided demo: nearest suitable truck');
     }
-    if(t===5&&v.assignedBin){v.x=b.x;v.y=b.y}
-    if(t===6&&v.assignedBin){const target=state.bins.find(x=>x.id===v.assignedBin);if(target){v.x=target.x;v.y=target.y}}
-    if(t===7){v.currentLoad=Math.max(v.currentLoad,v.capacity*.84);logEvent(`${v.id} capacity check: ${fmt(v.currentLoad/v.capacity*100)}% loaded; emergency-risk bins remain eligible.`,'ai')}
-    if(t===8&&!['Returning','Breakdown'].includes(v.status))routeToFacility(v,'guided demo capacity check');
+    if(t===6)logEvent(`${v.id} re-evaluated nearby bins; next target ${v.assignedBin||'facility'}.`,'ai');
+    if(t===7)logEvent(`${v.id} capacity check: ${fmt(v.currentLoad/v.capacity*100)}% loaded.`,'ai');
+    if(t===8&&!['Returning','Breakdown','Waiting'].includes(v.status))routeToFacility(v,'finish the guided demonstration trip');
     if(t===9&&!state.incidents.some(i=>i.type==='road'))activateIncident('road',true);
-    if(t===10){demoMode=false;state.isGuided=false;logEvent('CITY STABILIZED — guided demo complete; simulated results recorded.','success');setTimeout(()=>setRunning(false),20);toast('Guided demo complete')}
+  }
+  function simulationStep(s=state,guided=false){
+    s.currentMinutes+=TICK_MINUTES;s.tickCount++;s.collectedThisTick=0;
+    s.facilities.forEach(f=>{f.currentLoad=Math.max(0,f.currentLoad-.12*s.processingCapacity)});
+    s.reports.forEach(r=>{if(r.step<5&&s.tickCount%2===0){r.step++;if(r.step===2)logEvent(`${r.id} assigned to an available vehicle.`,'ai',s);if(r.step===5)logEvent(`${r.id} resolved after simulated collection.`,'success',s)}});
+    s.bins.forEach(b=>{const generatedKg=b.rate*(TICK_MINUTES/60)*activeModFor(b,s);const added=generatedKg/b.capacity*100;const before=b.fill;b.fill=clamp(b.fill+added,0,100);if(before<100&&b.fill>=100){s.overflowIncidents++;logEvent(`${b.id} overflow threshold reached.`,'alert',s)}});
+    recalculate(s);if(guided)applyDemoEvents();
+    s.bins.forEach(b=>{if((b.risk==='Critical'||b.risk==='High'||b.priority>=58)&&b.queuedAtMinutes==null)b.queuedAtMinutes=s.currentMinutes-TICK_MINUTES});
+    const peakCritical=currentMetrics(s).critical;
+    assignVehicles(s);
+    // Keep dispatch and re-evaluation visible before the next collection step.
+    if(!guided||![4,6].includes(s.tickCount))moveVehicles(s);
+    recalculate(s);return peakCritical;
+  }
+  function demoOutcome(){
+    const critical=currentMetrics().critical;
+    return {title:critical?'DEMO COMPLETE — RISKS REMAIN':'DEMO COMPLETE — NO CRITICAL BINS',message:`${state.binsCollected} bins collected, ${state.dumpTrips} facility visits, and ${critical} critical bins remaining. Continue the simulation to address outstanding risk.`};
+  }
+  function restoreDemoFleet(){
+    state.truckLimit=state.vehicles.length;
+    state.vehicles.filter(v=>v.status==='Maintenance').forEach(v=>{v.status='Available'});
+    recalculate();
   }
   function tick(){
-    state.currentMinutes+=TICK_MINUTES;state.tickCount++;state.collectedThisTick=0;
-    state.facilities.forEach(f=>{f.currentLoad=Math.max(0,f.currentLoad-.12*(TICK_MINUTES/10))});
-    state.reports.forEach(r=>{if(r.step<5&&state.tickCount%2===0){r.step++;if(r.step===2)logEvent(`${r.id} assigned to an available vehicle.`,'ai');if(r.step===5)logEvent(`${r.id} resolved after simulated collection.`,'success')}});
-    state.bins.forEach(b=>{const generatedKg=b.rate*(TICK_MINUTES/60)*activeModFor(b);const added=generatedKg/b.capacity*100;const before=b.fill;b.fill=clamp(b.fill+added,0,100);if(before<100&&b.fill>=100){state.overflowIncidents++;logEvent(`${b.id} overflow threshold reached.`,'alert')}});
-    recalculate();applyDemoEvents();assignVehicles();moveVehicles();recalculate();recordHistory();renderAll();
+    simulationStep(state,demoMode);
+    if(demoMode&&state.tickCount>=guidedStory.length){demoMode=false;state.isGuided=false;demoPaused=false;restoreDemoFleet();setRunning(false);logEvent(demoOutcome().message,'info');toast('Guided demo complete — review the recorded outcome')}
+    recordHistory();renderAll();
   }
   function setRunning(run){state.isRunning=run;clearInterval(timer);if(run&&!demoPaused)timer=setInterval(tick,state.isGuided?6000:Math.max(90,1000/state.speed));renderControls()}
   function reset(){clearInterval(timer);clearInterval(replayTimer);state=makeInitialState();selectedBinId=null;demoMode=false;demoPaused=false;labResults=null;renderAll();toast('Simulation reset to 08:00')}
 
   function activateIncident(type,forceOn=false){
     const existing=state.incidents.find(i=>i.type===type);
-    if(existing&&!forceOn){state.incidents=state.incidents.filter(i=>i.type!==type);if(type==='rain')state.rain='none';if(type==='festival')state.festival=false;if(type==='road')state.roadClosures=Math.max(0,state.roadClosures-1);if(type==='surge'){}if(type==='facility')state.processingCapacity=1;if(type==='breakdown'){const v=state.vehicles.find(v=>v.status==='Breakdown');if(v)v.status='Available'};logEvent(`${labelIncident(type)} cleared.`);renderAll();return}
+    if(existing&&!forceOn){state.incidents=state.incidents.filter(i=>i.type!==type);if(type==='rain')state.rain='none';if(type==='festival')state.festival=false;if(type==='road')state.roadClosures=Math.max(0,state.roadClosures-1);if(type==='facility')state.processingCapacity=1;if(type==='breakdown'){const v=state.vehicles.find(v=>v.status==='Breakdown');if(v)v.status='Available'};recalculate();replanRoutes();assignVehicles();logEvent(`${labelIncident(type)} cleared.`);renderAll();return}
     if(existing)return;
     const info={rain:['Heavy rain','Waste generation increased; travel speed reduced.'],festival:['Festival','Central Area generation increased.'],road:['Road closure','Blocked segment removed; routes recalculated.'],breakdown:['Truck breakdown','Assigned work moved to another available truck.'],surge:['Waste surge','Citywide generation temporarily increased.'],facility:['Facility capacity reduction','Vehicles redirected to balance processing load.']}[type];
     state.incidents.push({type,name:info[0],impact:info[1],time:timeText()});
     if(type==='rain')state.rain='heavy';if(type==='festival')state.festival=true;if(type==='road')state.roadClosures++;if(type==='facility')state.processingCapacity=.7;
     if(type==='breakdown'){const v=state.vehicles.find(v=>v.status==='Collecting')||state.vehicles.find(v=>v.status==='Available');if(v){const lost=v.assignedBin;v.status='Breakdown';v.assignedBin=null;v.nextTarget=null;v.route=[];v.lastDecision='Unavailable: simulated breakdown';logEvent(`${v.id} failed${lost?`; ${lost} returned to the priority queue`:''}.`,'alert')}}
-    if(type==='road')state.vehicles.filter(v=>v.route.length>1).forEach(v=>{v.routeVersion++;v.lastDecision='Route updated because a road segment closed'});
-    recalculate();assignVehicles();logEvent(`${info[0]} activated — ${info[1]}`,'alert');renderAll();toast(`${info[0]} simulated`);
+    recalculate();replanRoutes();assignVehicles();logEvent(`${info[0]} activated — ${info[1]}`,'alert');renderAll();toast(`${info[0]} simulated`);
   }
   function labelIncident(type){return ({rain:'Heavy rain',festival:'Festival',road:'Road closure',breakdown:'Truck breakdown',surge:'Waste surge',facility:'Facility reduction'})[type]}
   function activateCityCrisis(){
@@ -265,6 +396,39 @@
     state.scenario='CITY CRISIS';logEvent('CITY CRISIS detected → priorities, assignments, routes and facilities recalculated.','alert');renderAll();toast('City Crisis simulation activated')
   }
 
+  function mapViewport(){
+    const width=1000/mapZoom,height=680/mapZoom;
+    mapCenter.x=clamp(mapCenter.x,width/2,1000-width/2);mapCenter.y=clamp(mapCenter.y,height/2,680-height/2);
+    return {x:mapCenter.x-width/2,y:mapCenter.y-height/2,width,height};
+  }
+  function updateMapViewport(){
+    const box=mapViewport(),svg=$('#cityMap svg');
+    if(svg)svg.setAttribute('viewBox',`${box.x} ${box.y} ${box.width} ${box.height}`);
+    $('#cityMap')?.classList.toggle('is-zoomed',mapZoom>1);
+  }
+  function bindMapNavigation(){
+    const city=$('#cityMap');let drag=null,suppressClick=false;
+    city.addEventListener('pointerdown',e=>{
+      if(mapZoom<=1||e.button!==0||e.target.closest('.bin'))return;
+      const svg=$('svg',city),rect=svg.getBoundingClientRect(),box=mapViewport();
+      drag={x:e.clientX,y:e.clientY,center:{...mapCenter},scale:Math.min(rect.width/box.width,rect.height/box.height),moved:false};
+      city.setPointerCapture(e.pointerId);city.classList.add('is-dragging');
+    });
+    city.addEventListener('pointermove',e=>{
+      if(!drag)return;
+      const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
+      drag.moved||=Math.hypot(dx,dy)>3;
+      mapCenter={x:drag.center.x-dx/drag.scale,y:drag.center.y-dy/drag.scale};updateMapViewport();
+    });
+    const finish=()=>{suppressClick=!!drag?.moved;drag=null;city.classList.remove('is-dragging')};
+    city.addEventListener('pointerup',finish);city.addEventListener('pointercancel',finish);
+    city.addEventListener('click',e=>{if(suppressClick){e.stopPropagation();suppressClick=false}},true);
+    city.addEventListener('keydown',e=>{
+      if(e.target!==city||mapZoom<=1)return;
+      const delta={ArrowLeft:[-70,0],ArrowRight:[70,0],ArrowUp:[0,-50],ArrowDown:[0,50]}[e.key];
+      if(delta){e.preventDefault();mapCenter.x+=delta[0]/mapZoom;mapCenter.y+=delta[1]/mapZoom;updateMapViewport()}
+    });
+  }
   function mapSVG(compact=false,atlas=false){
     const zoneFilter=atlas?($('#zoneFilter')?.value||'all'):'all',riskFilter=atlas?($('#riskFilter')?.value||'all'):'all';
     const visibleBins=state.bins.filter(b=>{
@@ -272,24 +436,31 @@
       const riskOk=riskFilter==='all'||(riskFilter==='critical'&&b.risk==='Critical')||(riskFilter==='high'&&(b.risk==='High'||levelOf(b.fill)>=5))||(riskFilter==='normal'&&(b.risk==='Low'||b.risk==='Medium'));
       return zoneOk&&riskOk;
     });
-    const bins=visibleBins.map(b=>{const [name,color]=levelMeta[levelOf(b.fill)-1];return `<circle class="bin" data-bin="${b.id}" cx="${b.x}" cy="${b.y}" r="${compact?5:atlas?7:6}" fill="${color}"><title>${b.id} • ${fmt(b.fill)}% • ${name} • ${b.zone}</title></circle>`}).join('');
+    const bins=visibleBins.map(b=>{const [name,color]=levelMeta[levelOf(b.fill)-1];return `<circle class="bin" data-bin="${b.id}" cx="${b.x}" cy="${b.y}" r="${compact?5:atlas?7:6}" fill="${color}" tabindex="0" role="button" aria-label="${b.id}, ${fmt(b.fill)}% full, ${name}, ${b.zone}. Open details"><title>${b.id} • ${fmt(b.fill)}% • ${name} • ${b.zone}</title></circle>`}).join('');
     const zoneShapes=zones.map((z,i)=>`<rect class="zone" x="${z.x}" y="${z.y}" width="${z.w}" height="${z.h}" rx="${atlas?22:36}" fill="${atlas?'':z.color}"/><text class="zone-label" x="${z.x+20}" y="${z.y+26}">${z.name.toUpperCase()}</text><text class="zone-type" x="${z.x+20}" y="${z.y+43}">${z.profile.toUpperCase()} • ${z.commercial}% COMMERCIAL</text>`).join('');
     const roadShapes=roads.map((d,i)=>`<path class="road ${atlas&&i<2?'major':''} ${i<state.roadClosures?'closed':''} ${i>1?'thin':''}" d="${d}"/>`).join('');
     const localRoads=atlas?minorRoads.map(d=>`<path class="minor-road" d="${d}"/>`).join(''):'';
     const hotspots=visibleBins.filter(b=>b.fill>=76).slice(0,16).map(b=>`<circle class="hotspot" cx="${b.x}" cy="${b.y}" r="${18+(b.fill-75)*.35}"/>`).join('');
-    const routes=state.vehicles.filter(v=>v.route.length>1).map(v=>`<path class="route ${state.roadClosures?'alt':''}" d="M${v.route[0].x} ${v.route[0].y} L${v.route[1].x} ${v.route[1].y}"/>`).join('');
+    const routes=state.vehicles.filter(v=>v.route.length>1).map(v=>`<path class="route ${state.roadClosures?'alt':''}" d="${v.route.map((p,i)=>`${i?'L':'M'}${p.x} ${p.y}`).join(' ')}"/>`).join('');
     const dataLabels=atlas&&currentTwinLayer==='data'?visibleBins.filter(b=>b.fill>=60).slice(0,32).map(b=>`<text class="bin-data-label" x="${b.x+9}" y="${b.y-8}">${fmt(b.fill)}%</text>`).join(''):'';
     const aiLabels=atlas&&currentTwinLayer==='ai'?visibleBins.filter(b=>b.priority>=58).slice(0,28).map(b=>`<g class="ai-marker"><circle cx="${b.x}" cy="${b.y}" r="${10+b.priority/18}"/><text x="${b.x+10}" y="${b.y-10}">P${b.priority}</text></g>`).join(''):'';
     const trucks=state.vehicles.map(v=>`<g class="truck" transform="translate(${v.x} ${v.y})"><rect class="truck-body" x="-9" y="-6" width="14" height="11" rx="2"/><path class="truck-body" d="M5-4h6l4 5v4H5Z"/><circle cx="-4" cy="7" r="2" fill="#fff2af"/><circle cx="10" cy="7" r="2" fill="#fff2af"/><title>${v.id} • ${v.status}</title></g>`).join('');
     const facilities=state.facilities.map((f,i)=>`<g transform="translate(${f.x} ${f.y})"><rect class="facility" x="-13" y="-13" width="26" height="26" rx="5"/><text x="0" y="4" text-anchor="middle" font-size="9" fill="#fff" font-weight="900">F${i+1}</text><title>${f.id}</title></g>`).join('');
     const labels=atlas?`<g class="map-labels"><text class="landmark-label" x="490" y="350">CENTRAL AURANGABAD</text><text class="landmark-label" x="720" y="255">CIDCO</text><text class="landmark-label" x="155" y="465">WALUJ</text><text class="street-label" x="365" y="185">Jalna Road</text><text class="street-label" x="525" y="475">Beed Bypass Road</text><text class="street-label" x="665" y="365">Chhatrapati Sambhajinagar</text><text class="street-label" x="790" y="520">Chikalthana Industrial Area</text></g>`:'';
-    const width=atlas?1000/mapZoom:1000,height=atlas?680/mapZoom:680,x=atlas?(1000-width)/2:0,y=atlas?(680-height)/2:0;
+    const {width,height,x,y}=atlas?mapViewport():{width:1000,height:680,x:0,y:0};
     const bg=atlas?'#edf0eb':'#091018';
-    const fit=atlas&&window.innerWidth<=620?'xMidYMid slice':'xMidYMid meet';
-    return `<svg class="map-svg ${atlas?'atlas':''} layer-${currentTwinLayer}" viewBox="${x} ${y} ${width} ${height}" preserveAspectRatio="${fit}" role="img" aria-label="Local simulated city waste-management map"><defs><pattern id="cityGrid" width="34" height="34" patternUnits="userSpaceOnUse"><path d="M34 0H0V34" fill="none" stroke="${atlas?'#dfe5e0':'#142130'}" stroke-width="1"/></pattern></defs><rect width="1000" height="680" fill="${bg}"/><rect width="1000" height="680" fill="url(#cityGrid)"/>${zoneShapes}${localRoads}<g>${roadShapes}</g>${labels}<g class="hotspot-layer">${hotspots}</g><g class="route-layer">${routes}</g><g class="ai-layer">${aiLabels}</g><g class="bin-layer">${bins}</g><g class="data-layer">${dataLabels}</g><g>${trucks}${facilities}<g transform="translate(105 610)"><rect class="depot" x="-17" y="-14" width="34" height="28" rx="6"/><text x="0" y="4" text-anchor="middle" font-size="8" fill="#fff" font-weight="900">DEPOT</text></g></g></svg>`;
+    const fit='xMidYMid meet';
+    return `<svg class="map-svg ${atlas?'atlas':''} layer-${currentTwinLayer}" viewBox="${x} ${y} ${width} ${height}" preserveAspectRatio="${fit}" role="group" aria-label="Local simulated city waste-management map"><defs><pattern id="cityGrid" width="34" height="34" patternUnits="userSpaceOnUse"><path d="M34 0H0V34" fill="none" stroke="${atlas?'#dfe5e0':'#142130'}" stroke-width="1"/></pattern></defs><rect width="1000" height="680" fill="${bg}"/><rect width="1000" height="680" fill="url(#cityGrid)"/>${zoneShapes}${localRoads}<g>${roadShapes}</g>${labels}<g class="hotspot-layer">${hotspots}</g><g class="route-layer">${routes}</g><g class="ai-layer">${aiLabels}</g><g class="bin-layer">${bins}</g><g class="data-layer">${dataLabels}</g><g>${trucks}${facilities}<g transform="translate(105 610)"><rect class="depot" x="-17" y="-14" width="34" height="28" rx="6"/><text x="0" y="4" text-anchor="middle" font-size="8" fill="#fff" font-weight="900">DEPOT</text></g></g></svg>`;
   }
   function renderMaps(){
-    ['dashboardMap','cityMap','simulationMap'].forEach((id,i)=>{const el=$(`#${id}`);if(!el)return;el.innerHTML=id==='cityMap'?mapSVG(false,true):mapSVG(i===0,false);$$('.bin',el).forEach(n=>n.addEventListener('click',()=>selectBin(n.dataset.bin)))});
+    const focused=document.activeElement?.dataset?.bin,focusedMap=document.activeElement?.closest('.city-map,.mini-map,.sim-map')?.id;
+    ['dashboardMap','cityMap','simulationMap'].forEach((id,i)=>{const el=$(`#${id}`);if(!el)return;el.innerHTML=id==='cityMap'?mapSVG(false,true):mapSVG(i===0,false);$$('.bin',el).forEach(n=>{
+      n.addEventListener('click',()=>selectBin(n.dataset.bin));
+      n.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();selectBin(n.dataset.bin);$('#closeDetail')?.focus()}});
+      n.addEventListener('focus',()=>{if(id==='cityMap'&&mapZoom>1){mapCenter={x:+n.getAttribute('cx'),y:+n.getAttribute('cy')};updateMapViewport()}});
+    })});
+    updateMapViewport();
+    if(focused&&focusedMap)$(`#${focusedMap} [data-bin="${focused}"]`)?.focus();
     const summary=$('#mapSummary');if(summary){const visible=$$('#cityMap .bin').length,m=currentMetrics();summary.innerHTML=`<span><b>${visible}</b> visible bins</span><span><b>${m.critical}</b> critical</span><span><b>${state.vehicles.filter(v=>v.status==='Collecting'||v.status==='Returning').length}</b> active trucks</span><span><b>${timeText()}</b> simulation time</span>`}
     toggleMapLayers();
   }
@@ -298,7 +469,7 @@
   function toggleMapLayers(){const city=$('#cityMap');if(!city)return;const hot=$('#showHotspots'),routes=$('#showRoutes'),bins=$('#showBins');const h=$('.hotspot-layer',city),r=$('.route-layer',city),b=$('.bin-layer',city);if(h&&hot)h.style.display=hot.checked?'':'none';if(r&&routes)r.style.display=routes.checked?'':'none';if(b&&bins)b.style.display=bins.checked?'':'none'}
 
   function metricCard(label,value,sub,trend='good'){return `<div class="metric"><div class="metric-top"><span>${label}</span><span class="trend ${trend}">${trend==='good'?'●':'▲'}</span></div><strong>${value}</strong><small>${sub}</small></div>`}
-  function renderMetrics(){const m=currentMetrics();$('#metricGrid').innerHTML=[metricCard('Total bins','100','Across 6 simulated zones'),metricCard('Critical bins',m.critical,'Level 7 requires action',m.critical>10?'up':'good'),metricCard('Available vehicles',m.available,'of 8 local fleet'),metricCard('Waste collected',`${fmt(state.wasteCollected,1)} t`,'This simulation session'),metricCard('Overflow risk',`${fmt(m.overflow)}%`,'Forecast next 2 hours',m.overflow>20?'up':'good'),metricCard('Avg collection time',`${fmt(m.avgTime)} min`,'Simulated estimate'),metricCard('Vehicle utilization',`${fmt(m.utilization)}%`,'Active fleet'),metricCard('Service level',`${fmt(state.serviceLevel)}%`,'Bins served before overflow')].join('');$('#queueCount').textContent=m.critical;$('#dashboardBrief').textContent=m.critical?`${m.critical} critical bins need attention.`:'Monitoring waste generation across all zones.'}
+  function renderMetrics(){const m=currentMetrics();$('#metricGrid').innerHTML=[metricCard('Total bins','100','Across 6 simulated zones'),metricCard('Critical bins',m.critical,'Level 7 requires action',m.critical>10?'up':'good'),metricCard('Available vehicles',m.available,'of 8 local fleet'),metricCard('Waste collected',`${fmt(state.wasteCollected,1)} t`,'This simulation session'),metricCard('Overflow risk',`${fmt(m.overflow)}%`,'Forecast next 90 minutes',m.overflow>20?'up':'good'),metricCard('Avg collection time',`${fmt(m.avgTime)} min`,'Simulated estimate'),metricCard('Vehicle utilization',`${fmt(m.utilization)}%`,'Active fleet'),metricCard('Service level',`${fmt(state.serviceLevel)}%`,'Bins served before overflow')].join('');$('#queueCount').textContent=m.critical;$('#dashboardBrief').textContent=m.critical?`${m.critical} critical bins need attention.`:'Monitoring waste generation across all zones.'}
   function renderAreaActivity(){
     const el=$('#areaActivityGrid');if(!el)return;
     el.innerHTML=[...zones].sort((a,b)=>b.commercial-a.commercial).map((z,i)=>{
@@ -327,9 +498,10 @@
       ['DUMP TRIPS',state.dumpTrips,`${fmt(m.avgBinsPerTrip,1)} bins per trip`]
     ].map(x=>`<div class="sim-snapshot-card ${x[3]||''}"><span>${x[0]}</span><b>${x[1]}</b><small>${x[2]}</small></div>`).join('');
     const storyIndex=state.isGuided||state.demoStep?clamp(state.demoStep,0,guidedStory.length-1):clamp(state.tickCount%guidedStory.length,0,guidedStory.length-1);
-    const story=guidedStory[storyIndex];
+    const story=storyIndex===guidedStory.length-1?{...guidedStory[storyIndex],...demoOutcome()}:guidedStory[storyIndex];
     $('#storyBar').innerHTML=guidedStory.map((s,i)=>`<span class="${i<storyIndex?'done':i===storyIndex?'active':''}">${s.stage}</span>`).join('<i>→</i>');
-    const currentBin=truck?.assignedBin?state.bins.find(x=>x.id===truck.assignedBin):b;
+    const storyBin=(state.isGuided||state.demoStep===9)&&storyIndex<=4?state.bins.find(x=>x.id==='B-104'):null;
+    const currentBin=storyBin||(truck?.assignedBin?state.bins.find(x=>x.id===truck.assignedBin):b);
     const nextCandidate=truck&&truck.status==='Collecting'?eligibleCandidates(truck,truck.assignedBin)[0]:null;
     let decision=`AI detected ${b.id} at ${b.priority}/100 priority with ${b.overflowProbability}% overflow probability.`;
     if(truck?.status==='Collecting')decision=`AI selected ${truck.id} for ${truck.assignedBin}: capacity fits, ETA ${truck.eta} min, and the route is efficient.`;
@@ -341,7 +513,7 @@
     const reasons=truck?.status==='Collecting'?[`${truck.assignedBin} has priority ${currentBin?.priority||0}/100`,`${truck.id} has ${fmt((truck.capacity-truck.currentLoad)/truck.capacity*100)}% capacity remaining`,`${fmt(currentBin?.distanceKm||0,1)} km route estimate`,state.roadClosures?'Route recalculated around a closure':'Low route disruption']:[`${b.fill>=76?'High':'Rising'} fill level`,`${b.overflowProbability}% overflow probability`,`${b.rate} kg/hour growth`,`Priority breakdown is visible in Digital Twin`];
     $('#whyPanel').innerHTML=`<b>WHY THIS DECISION?</b><ul>${reasons.map(r=>`<li>${r}</li>`).join('')}</ul>`;
     const load=truck?truck.currentLoad/truck.capacity*100:0,remaining=truck?truck.capacity-truck.currentLoad:0;
-    $('#truckTelemetry').innerHTML=truck?`<div class="telemetry-head"><b>${truck.id}</b><span class="status-label ${truck.status.toLowerCase()}"><i></i>${truck.status}</span></div><div class="capacity-label"><span>Load ${fmt(load)}%</span><span>${fmt(remaining)} kg remaining</span></div><div class="truck-capacity"><i style="width:${load}%"></i><em style="left:${OPERATIONAL_CAPACITY*100}%"></em></div><div class="telemetry-grid"><span>Collected<b>${truck.collectedBins.length?truck.collectedBins.join(' → '):'None yet'}</b></span><span>Current target<b>${truck.assignedBin||state.facilities[truck.facility]?.id||'Waiting'}</b></span><span>Next target<b>${nextCandidate?.b.id||truck.nextTarget||'Re-evaluate'}</b></span><span>Route update<b>Version ${truck.routeVersion}</b></span></div><p>${truck.lastDecision}</p>`:`<p class="muted">No truck is active. The priority queue is being monitored.</p>`;
+    $('#truckTelemetry').innerHTML=truck?`<div class="telemetry-head"><b>${truck.id}</b><span class="status-label ${truck.status.toLowerCase()}"><i></i>${truck.status}</span></div><div class="capacity-label"><span>Load ${fmt(load)}%</span><span>${fmt(remaining)} kg remaining</span></div><div class="truck-capacity"><i style="width:${load}%"></i><em style="left:${OPERATIONAL_CAPACITY*100}%"></em></div><div class="telemetry-grid"><span>Collected<b>${truck.collectedBins.length?truck.collectedBins.join(' → '):'None yet'}</b></span><span>Current target<b>${truck.assignedBin||(truck.status==='Returning'?state.facilities[truck.facility]?.id:'Waiting')}</b></span><span>Next target<b>${nextCandidate?.b.id||truck.nextTarget||'Re-evaluate'}</b></span><span>Route update<b>Version ${truck.routeVersion}</b></span></div><p>${truck.lastDecision}</p>`:`<p class="muted">No truck is active. The priority queue is being monitored.</p>`;
     const cycleStages=[
       ['Waste grows','Every bin uses its own local generation rate.'],
       ['Forecast updates','The next 90 minutes are estimated.'],
@@ -351,8 +523,8 @@
       ['Results save','Collection and analytics update together.']
     ];
     $('#currentStep').innerHTML=`<div class="cycle-heading"><span class="cycle-number">${String(state.tickCount).padStart(2,'0')}</span><div><h3>${cycleDone?'Cycle completed':'Ready to begin'}</h3><p>${cycleDone?`At ${timeText()}, every stage below was recalculated from the same city state.`:'Press Start or +10 min. The system will run all six stages in order.'}</p></div></div><div class="cycle-flow">${cycleStages.map((s,i)=>`<div class="cycle-stage ${cycleDone?'done':i===0?'ready':''}"><i>${cycleDone?'✓':i+1}</i><span><b>${s[0]}</b><small>${s[1]}</small></span></div>`).join('')}</div>`;
-    $('#eventLog').innerHTML=state.logs.map(l=>`<div class="log-row"><time>${l.time}</time><i style="background:${l.type==='alert'?'var(--red)':l.type==='success'?'var(--green)':'var(--blue)'}"></i><span>${l.text}</span></div>`).join('');
-    $('#eventTicker').innerHTML=`<span class="signal ${state.logs[0]?.type==='alert'?'red':state.logs[0]?.type==='success'?'green':'blue'}"></span><span>${state.tickCount?state.logs[0].text:'Ready. Start the simulation or advance one 10-minute step.'}</span>`;
+    $('#eventLog').innerHTML=state.logs.map(l=>`<div class="log-row"><time>${l.time}</time><i style="background:${l.type==='alert'?'var(--red)':l.type==='success'?'var(--green)':'var(--blue)'}"></i><span>${escapeHTML(l.text)}</span></div>`).join('');
+    $('#eventTicker').innerHTML=`<span class="signal ${state.logs[0]?.type==='alert'?'red':state.logs[0]?.type==='success'?'green':'blue'}"></span><span>${state.tickCount?escapeHTML(state.logs[0].text):'Ready. Start the simulation or advance one 10-minute step.'}</span>`;
     $('#explainStrip').innerHTML=[
       ['1 · CITY CONDITION',`${b.id} is ${fmt(b.fill)}% full`,`${b.zone} currently has the highest priority.`],
       ['2 · PREDICTION',Number.isFinite(mins)?`${fmt(mins)} min to overflow`:'No near overflow',`${b.rate} kg/hour generation creates ${b.risk.toLowerCase()} risk.`],
@@ -360,41 +532,42 @@
       ['4 · EXPECTED RESULT',truck?.status==='Collecting'?'Collect, re-evaluate, continue':'Continue monitoring',truck?'The truck may collect multiple suitable bins before dumping.':'Fill, forecast and priority update again.']
     ].map(x=>`<div class="explain-tile ${x[3]||''}"><span>${x[0]}</span><b>${x[1]}</b><small>${x[2]}</small></div>`).join('');
   }
-  function renderVehicles(){const m=currentMetrics();$('#vehicleMetrics').innerHTML=[metricCard('Fleet size','8','Simulated trucks'),metricCard('Available',m.available,'Ready for assignment'),metricCard('Bins / dump trip',fmt(m.avgBinsPerTrip,1),'Dynamic multi-bin collection'),metricCard('Dump trips',state.dumpTrips,'Simulation total')].join('');$('#vehicleTable').innerHTML=state.vehicles.map(v=>`<tr><td><b>${v.id}</b><small>${v.collectedBins.length?`${v.collectedBins.length} bins this trip`:''}</small></td><td><span class="status-label ${v.status.toLowerCase()}"><i></i>${v.status}</span></td><td><div class="load-cell"><span>${fmt(v.currentLoad/v.capacity*100)}%</span><div class="load-mini"><i style="width:${v.currentLoad/v.capacity*100}%"></i></div></div></td><td>${v.assignedBin||state.facilities[v.facility]?.id||'—'}</td><td>${v.status==='Collecting'?`${v.eta} min`:'—'}</td></tr>`).join('');const active=state.vehicles.find(v=>v.status==='Collecting'||v.status==='Returning'),top=criticalBins().slice(0,3),aiDistance=Math.max(4,state.routeDistance||12.8),fixedDistance=aiDistance*1.32;$('#routeComparison').innerHTML=`<span class="kicker">LIVE ADAPTIVE ROUTE</span><div class="route-path"><span class="route-node">${active?.id||'Depot'}</span><span class="route-arrow">→</span>${active?.assignedBin?`<span class="route-node">${active.assignedBin}</span><span class="route-arrow">→</span>`:''}<span class="route-node">${active?.status==='Returning'?state.facilities[active.facility]?.id:(active?.nextTarget||top[0]?.id)}</span></div><p class="muted">${active?.lastDecision||'Routes are recalculated after every state change.'}</p><div class="compare-stats"><div class="compare-col"><b>Fixed scheduling</b><span>Estimated distance <strong>${fmt(fixedDistance,1)} km</strong></span><span>Pattern <strong>Collect → Dump</strong></span></div><div class="compare-col ai"><b>AI dynamic</b><span>Simulated distance <strong>${fmt(aiDistance,1)} km</strong></span><span>Pattern <strong>Collect → Re-evaluate</strong></span></div></div>`;$('#facilityGrid').innerHTML=state.facilities.map(f=>{const use=f.currentLoad/(f.capacity*state.processingCapacity)*100,predicted=clamp(use+state.vehicles.filter(v=>v.status==='Returning'&&state.facilities[v.facility]===f).reduce((s,v)=>s+v.currentLoad/1000/f.capacity*100,0),0,100);return `<div class="facility-card"><div class="facility-top"><div><span class="kicker">${f.status}</span><h3>${f.id}</h3><p class="muted">${f.compatibility.join(', ')}</p></div><div class="capacity-ring" style="--value:${use}"><b>${fmt(use)}%</b></div></div><div class="detail-stat"><span>Current load</span><b>${fmt(f.currentLoad,1)} t</b></div><div class="detail-stat"><span>Predicted with incoming</span><b>${fmt(predicted)}%</b></div><div class="detail-stat"><span>Traffic factor</span><b>${f.traffic<.2?'Low':'Moderate'}</b></div><div class="detail-stat"><span>Incoming trucks</span><b>${state.vehicles.filter(v=>v.status==='Returning'&&state.facilities[v.facility]===f).length}</b></div></div>`}).join('')}
+  function renderVehicles(){const m=currentMetrics();$('#vehicleMetrics').innerHTML=[metricCard('Fleet size','8','Simulated trucks'),metricCard('Available',m.available,'Ready for assignment'),metricCard('Bins / dump trip',fmt(m.avgBinsPerTrip,1),'Dynamic multi-bin collection'),metricCard('Dump trips',state.dumpTrips,'Simulation total')].join('');$('#vehicleTable').innerHTML=state.vehicles.map(v=>`<tr><td><b>${v.id}</b><small>${v.collectedBins.length?`${v.collectedBins.length} bins this trip`:''}</small></td><td><span class="status-label ${v.status.toLowerCase()}"><i></i>${v.status}</span></td><td><div class="load-cell"><span>${fmt(v.currentLoad/v.capacity*100)}%</span><div class="load-mini"><i style="width:${v.currentLoad/v.capacity*100}%"></i></div></div></td><td>${v.assignedBin||state.facilities[v.facility]?.id||'—'}</td><td>${v.status==='Collecting'?`${v.eta} min`:'—'}</td></tr>`).join('');const active=state.vehicles.find(v=>v.status==='Collecting'||v.status==='Returning'),top=criticalBins().slice(0,3),aiDistance=state.routeDistance;$('#routeComparison').innerHTML=`<span class="kicker">LIVE ADAPTIVE ROUTE</span><div class="route-path"><span class="route-node">${active?.id||'Depot'}</span><span class="route-arrow">→</span>${active?.assignedBin?`<span class="route-node">${active.assignedBin}</span><span class="route-arrow">→</span>`:''}<span class="route-node">${active?.status==='Returning'?state.facilities[active.facility]?.id:(active?.nextTarget||top[0]?.id)}</span></div><p class="muted">${escapeHTML(active?.lastDecision||'Routes are recalculated after every state change.')}</p><div class="compare-stats"><div class="compare-col"><b>Fixed scheduling</b><span>Distance <strong>Not measured</strong></span><span>Pattern <strong>Collect → Dump</strong></span></div><div class="compare-col ai"><b>AI dynamic</b><span>Simulated distance <strong>${fmt(aiDistance,1)} km</strong></span><span>Pattern <strong>Collect → Re-evaluate</strong></span></div></div>`;$('#facilityGrid').innerHTML=state.facilities.map(f=>{const use=f.currentLoad/(f.capacity*state.processingCapacity)*100,predicted=clamp(use+state.vehicles.filter(v=>v.status==='Returning'&&state.facilities[v.facility]===f).reduce((s,v)=>s+v.currentLoad/1000/f.capacity*100,0),0,100);return `<div class="facility-card"><div class="facility-top"><div><span class="kicker">${f.status}</span><h3>${f.id}</h3><p class="muted">${f.compatibility.join(', ')}</p></div><div class="capacity-ring" style="--value:${use}"><b>${fmt(use)}%</b></div></div><div class="detail-stat"><span>Current load</span><b>${fmt(f.currentLoad,1)} t</b></div><div class="detail-stat"><span>Predicted with incoming</span><b>${fmt(predicted)}%</b></div><div class="detail-stat"><span>Traffic factor</span><b>${f.traffic<.2?'Low':'Moderate'}</b></div><div class="detail-stat"><span>Incoming trucks</span><b>${state.vehicles.filter(v=>v.status==='Returning'&&state.facilities[v.facility]===f).length}</b></div></div>`}).join('')}
   function decisionLabConfig(){return {waste:1+(+$('#wasteRange')?.value||0)/100,rain:$('#rainSelect')?.value||'none',festival:$('#festivalSelect')?.value==='on',closures:+($('#roadRange')?.value||0),trucks:+($('#truckRange')?.value||8),failures:+($('#failureRange')?.value||0),capacity:+($('#capacityRange')?.value||100)/100}}
   function simulateDecisionCopy(config=decisionLabConfig(),fleetOverride=null){
-    const copy=JSON.parse(JSON.stringify(state)),fleet=Math.max(1,(fleetOverride??config.trucks)-config.failures);
-    copy.wasteModifier=config.waste;copy.rain=config.rain;copy.festival=config.festival;copy.roadClosures=config.closures;copy.truckLimit=fleet;copy.processingCapacity=config.capacity;copy.incidents=[];
+    const total=Math.max(2,Math.min(12,Math.floor(fleetOverride??config.trucks))),failures=Math.max(0,Math.floor(config.failures)),fleet=Math.max(0,total-failures);
+    let cache=labCache.get(state);
+    if(!cache||cache.version!==state.modelVersion){cache={version:state.modelVersion,results:new Map()};labCache.set(state,cache)}
+    const key=JSON.stringify([config,total]);if(cache.results.has(key))return {...cache.results.get(key)};
+    const copy=JSON.parse(JSON.stringify(state));
+    copy.wasteModifier=config.waste;copy.rain=config.rain;copy.festival=config.festival;copy.roadClosures=config.closures;copy.truckLimit=fleet;copy.processingCapacity=config.capacity;copy.incidents=[];copy.isGuided=false;copy.responseTimes=[];
     if(config.rain==='heavy')copy.incidents.push({type:'rain'});if(config.festival)copy.incidents.push({type:'festival'});if(config.closures)copy.incidents.push({type:'road'});
-    let served=0,overflowEvents=0,routeDistance=0,peakCritical=0;
-    for(let step=0;step<9;step++){
-      copy.bins.forEach(b=>{const wasOverflowed=b.fill>=100;const generated=b.rate*(TICK_MINUTES/60)*activeModFor(b,copy);b.fill=clamp(b.fill+generated/b.capacity*100,0,100);if(!wasOverflowed&&b.fill>=100)overflowEvents++});
-      recalculate(copy);peakCritical=Math.max(peakCritical,copy.bins.filter(b=>b.risk==='Critical').length);
-      const queue=[...copy.bins].sort((a,b)=>b.priority-a.priority).filter(b=>b.priority>=58);
-      for(let t=0;t<fleet;t++){
-        let load=0,stops=0,last={x:105,y:610};
-        while(queue.length&&stops<3){
-          const idx=queue.findIndex(b=>binPayload(b)<=2200-load);if(idx<0)break;
-          const b=queue.splice(idx,1)[0],payload=binPayload(b);if((load+payload)/2200>OPERATIONAL_CAPACITY&&b.overflowProbability<EMERGENCY_RISK)break;
-          routeDistance+=Math.hypot(last.x-b.x,last.y-b.y)/CITY_UNITS_PER_KM*(1+config.closures*.2);load+=payload;b.fill=8;served++;stops++;last=b;
-        }
-        if(stops)routeDistance+=Math.min(...copy.facilities.map(f=>Math.hypot(last.x-f.x,last.y-f.y)/CITY_UNITS_PER_KM));
-      }
-    }
-    recalculate(copy);const metrics=currentMetrics(copy),delay=Math.max(16,72-fleet*6+config.closures*5+(config.rain==='heavy'?8:0)),dumpTrips=Math.ceil(served/2.4),facilityDemand=served?Math.min(100,(served*0.12)/(copy.facilities.reduce((s,f)=>s+f.capacity*config.capacity,0))*100):0;
-    return {overflowRisk:+metrics.overflow.toFixed(1),criticalBins:metrics.critical,peakCritical,collectionDelay:+delay.toFixed(0),requiredTrucks:Math.min(12,Math.max(fleet,Math.ceil(peakCritical/2.4))),facilityDemand:+facilityDemand.toFixed(1),routeDistance:+routeDistance.toFixed(1),dumpTrips,served,overflowEvents,serviceLevel:+copy.serviceLevel.toFixed(1),fleet};
+    copy.vehicles=Array.from({length:total},(_,i)=>{
+      const v=copy.vehicles[i]||{id:`T-${String(i+1).padStart(2,'0')}`,x:105,y:610,capacity:2200,currentLoad:0,status:'Available',assignedBin:null,nextTarget:null,eta:0,progress:0,route:[],facility:0,collectedBins:[],routeVersion:0,lastDecision:'Planning fleet addition',dumpTrips:0,wasteTypes:[]};
+      if(i>=fleet||['Maintenance','Breakdown','Waiting'].includes(v.status)){v.status=i>=fleet?'Breakdown':'Available';v.assignedBin=null;v.nextTarget=null;v.route=[]}
+      return v;
+    });
+    recalculate(copy);replanRoutes(copy);
+    copy.bins.forEach(b=>{b.queuedAtMinutes=(b.risk==='Critical'||b.risk==='High'||b.priority>=58)?copy.currentMinutes:null});
+    const initial={distance:copy.routeDistance,dumps:copy.dumpTrips,served:copy.binsCollected,overflow:copy.overflowIncidents};
+    let peakCritical=currentMetrics(copy).critical;
+    for(let step=0;step<FORECAST_HOURS*60/TICK_MINUTES;step++)peakCritical=Math.max(peakCritical,simulationStep(copy));
+    const metrics=currentMetrics(copy),pending=copy.bins.filter(b=>b.queuedAtMinutes!=null).map(b=>copy.currentMinutes-b.queuedAtMinutes);
+    const delay=Math.max(0,...copy.responseTimes,...pending),capacity=copy.facilities.reduce((sum,f)=>sum+f.capacity*copy.processingCapacity,0);
+    const result={overflowRisk:+metrics.overflow.toFixed(1),criticalBins:metrics.critical,peakCritical,collectionDelay:delay,totalTrucks:total,facilityDemand:+(copy.facilities.reduce((sum,f)=>sum+f.currentLoad,0)/capacity*100).toFixed(1),routeDistance:+(copy.routeDistance-initial.distance).toFixed(1),dumpTrips:copy.dumpTrips-initial.dumps,served:copy.binsCollected-initial.served,overflowEvents:copy.overflowIncidents-initial.overflow,serviceLevel:+copy.serviceLevel.toFixed(1),fleet};
+    cache.results.set(key,result);return {...result};
   }
   function renderScenarios(){
     const result=labResults||simulateDecisionCopy(),name=labResults?.name||'Baseline copy';
     $('#scenarioName').textContent=name.toUpperCase();
-    const vals=[['Overflow risk',`${result.overflowRisk}%`],['Critical bins',result.criticalBins],['Collection delay',`${result.collectionDelay} min`],['Required trucks',result.requiredTrucks],['Dump-site demand',`${result.facilityDemand}%`],['Route distance',`${result.routeDistance} km`],['Dump trips',result.dumpTrips],['Bins served',result.served]];
+    const vals=[['Overflow risk',`${result.overflowRisk}%`],['Critical bins',result.criticalBins],['Max collection delay',`${result.collectionDelay} min`],['Active trucks',result.fleet],['Facility load',`${result.facilityDemand}%`],['Route distance',`${result.routeDistance} km`],['Dump trips',result.dumpTrips],['Bins served',result.served]];
     $('#scenarioResults').innerHTML=vals.map(v=>`<div class="result-tile"><span>${v[0]}</span><strong>${v[1]}</strong></div>`).join('');
     $('#impactChart').innerHTML=lineChart([[result.criticalBins,result.overflowRisk,result.collectionDelay,result.routeDistance]],['Critical','Risk','Delay','Distance'],['#f2a65a']);
     const configs=[['Normal',{waste:1,rain:'none',festival:false,closures:0,trucks:8,failures:0,capacity:1}],['Festival',{waste:1.5,rain:'none',festival:true,closures:0,trucks:8,failures:0,capacity:1}],['Heavy rain',{waste:1.25,rain:'heavy',festival:false,closures:1,trucks:8,failures:0,capacity:1}],['Resource shortage',{waste:1.35,rain:'none',festival:false,closures:2,trucks:5,failures:1,capacity:.7}]];
     $('#scenarioCompare').innerHTML=configs.map(([label,c])=>{const r=simulateDecisionCopy(c);return `<div><b>${label}</b><span>${r.overflowRisk}% risk</span><span>${r.collectionDelay} min delay</span><span>${r.fleet} active trucks</span></div>`}).join('');
     const factors=[['Time of day',timeText(),'Controls demand pattern'],['Live scenario',state.scenario,'Decision Lab remains separate'],['Waste generation',`${fmt(state.wasteModifier*100-100)}% modifier`,'Live twin value'],['Rainfall',state.rain,'Live twin value'],['Road condition',state.roadClosures?`${state.roadClosures} closure(s)`:'Clear','Changes route and ETA'],['Vehicle availability',`${state.truckLimit}/8`,'Live service capacity'],['Processing capacity',`${fmt(state.processingCapacity*100)}%`,'Live facility capacity'],['Reports',state.reports.length,'Citizen issues in live state']];
     $('#factorGrid').innerHTML=factors.map(f=>`<div class="factor"><div class="factor-head"><span>${f[0]}</span><b>${f[1]}</b></div><small>${f[2]}</small></div>`).join('');
-    $('#reportTimeline').innerHTML=state.reports.length?state.reports.map(r=>`<div class="report-item"><b>${r.location}</b><span>${r.type} • ${r.severity}</span><div>${['Reported','Verified','Assigned','Dispatched','Collected','Resolved'].map((s,i)=>`<i class="${i<=r.step?'done':''}">${s}</i>`).join('')}</div></div>`).join(''):'<p class="muted">No citizen reports in this simulated session.</p>';
+    $('#reportTimeline').innerHTML=state.reports.length?state.reports.map(r=>`<div class="report-item"><b>${escapeHTML(r.location)}</b><span>${escapeHTML(r.type)} • ${escapeHTML(r.severity)}</span><div>${['Reported','Verified','Assigned','Dispatched','Collected','Resolved'].map((s,i)=>`<i class="${i<=r.step?'done':''}">${s}</i>`).join('')}</div></div>`).join(''):'<p class="muted">No citizen reports in this simulated session.</p>';
     $$('.incident-card').forEach(b=>b.classList.toggle('active',state.incidents.some(i=>i.type===b.dataset.incident)));$$('[data-sim-incident]').forEach(b=>b.classList.toggle('active',state.incidents.some(i=>i.type===b.dataset.simIncident)))
   }
   function renderAnalytics(){
@@ -445,18 +618,30 @@
     $('#comparisonGrid').innerHTML=`<div class="head">METRIC</div><div class="head">Fixed schedule<br><small>Not yet measured</small></div><div class="head">Adaptive simulation<br><small>Current session</small></div>${rows.map(r=>`<div>${r[0]}</div><div class="muted">${r[1]}</div><div class="ai-value">${r[2]}</div>`).join('')}`;
   }
   function renderHow(){if($('#processFlow').children.length)return;$('#processFlow').innerHTML=processStages.map((s,i)=>`<article class="process-card"><span class="num">${String(i+1).padStart(2,'0')}</span><h3>${s[0]}</h3><p>${s[1]}</p></article>`).join('')}
-  function renderAll(){renderControls();renderMetrics();renderAreaActivity();renderPriority();renderLevels();renderMaps();renderDetail();renderCharts();renderRecommendation();renderPrediction();renderSimulation();renderVehicles();renderScenarios();renderAnalytics();renderHow()}
+  function renderAll(){renderControls();renderMetrics();renderAreaActivity();renderPriority();renderLevels();renderMaps();renderDetail();renderCharts();renderRecommendation();renderPrediction();renderSimulation();renderVehicles();if($('#scenarios').classList.contains('active'))renderScenarios();renderAnalytics();renderHow()}
 
   function showPage(id){const page=$(`#${id}`);if(!page)return;$$('.page').forEach(p=>p.classList.toggle('active',p.id===id));$$('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===id));$('#pageTitle').textContent=page.dataset.title||'AI-WasteTwin';$('.sidebar').classList.remove('open');window.scrollTo(0,0);renderAll()}
   function enterApp(page='dashboard'){demoMode=false;$('#landing').classList.add('hidden');$('#app').classList.remove('hidden');showPage(page)}
-  function startDemo(){enterApp('simulation');reset();visitorMode=true;demoMode=true;state.isGuided=true;state.demoStep=0;state.truckLimit=3;state.bins.forEach(x=>{x.fill=Math.min(x.fill,64)});const b=state.bins.find(x=>x.id==='B-104'),near1=state.bins.find(x=>x.id==='B-115'),near2=state.bins.find(x=>x.id==='B-121');if(b){b.fill=74;b.rate=42}if(near1){near1.fill=72;near1.rate=31;near1.x=b.x+42;near1.y=b.y+18}if(near2){near2.fill=66;near2.rate=27;near2.x=b.x+70;near2.y=b.y-22}state.vehicles.forEach(x=>{x.status='Maintenance';x.assignedBin=null;x.route=[]});const v=state.vehicles.find(x=>x.id==='T-03');if(v&&b){v.x=b.x-80;v.y=b.y+45;v.currentLoad=v.capacity*.12;v.status='Maintenance';v.lastDecision='Waiting for guided dispatch'}recalculate();renderAll();setRunning(true);toast('Guided demo started — the system will explain each decision')}
+  function startDemo(){enterApp('simulation');reset();visitorMode=true;demoMode=true;state.isGuided=true;state.demoStep=0;state.truckLimit=3;state.bins.forEach(x=>{x.fill=Math.min(x.fill,64)});const b=state.bins.find(x=>x.id==='B-104'),near1=state.bins.find(x=>x.id==='B-115'),near2=state.bins.find(x=>x.id==='B-121');if(b){b.fill=74;b.rate=42;b.anomaly=true;b.zonePriority=1}if(near1){near1.fill=72;near1.rate=31;near1.anomaly=false;near1.x=b.x+42;near1.y=b.y+18}if(near2){near2.fill=66;near2.rate=27;near2.x=b.x+70;near2.y=b.y-22}state.vehicles.forEach(x=>{x.status='Maintenance';x.assignedBin=null;x.route=[]});const v=state.vehicles.find(x=>x.id==='T-03');if(v&&b){v.x=b.x-80;v.y=b.y+45;v.currentLoad=v.capacity*.12;v.status='Maintenance';v.lastDecision='Waiting for guided dispatch'}recalculate();renderAll();setRunning(true);toast('Guided demo started — the system will explain each decision')}
   function pauseGuided(){if(!state.isGuided)return;demoPaused=!demoPaused;setRunning(!demoPaused);renderControls()}
   function skipGuided(){if(!state.isGuided)return;clearInterval(timer);tick();if(state.isGuided&&!demoPaused)setRunning(true)}
-  function exitGuided(){demoMode=false;state.isGuided=false;demoPaused=false;setRunning(false);renderAll();toast('Guided demo exited; live state preserved')}
+  function exitGuided(){demoMode=false;state.isGuided=false;demoPaused=false;restoreDemoFleet();setRunning(false);renderAll();toast('Guided demo exited; collections preserved and full fleet available')}
   function replay(){if(state.snapshots.length<2){toast('Run the simulation first to create a replay');return}setRunning(false);showPage('simulation');const saved=JSON.parse(JSON.stringify(state));let i=0;clearInterval(replayTimer);logEvent('Route replay started.','info');replayTimer=setInterval(()=>{const s=saved.snapshots[i++];if(!s){clearInterval(replayTimer);state=saved;renderAll();toast('Replay complete');return}state.currentMinutes=s.time;s.bins.forEach(x=>Object.assign(state.bins.find(b=>b.id===x.id),x));state.vehicles=s.vehicles.map(v=>({...v}));state.wasteCollected=s.wasteCollected;state.binsCollected=s.binsCollected||0;state.overflowPrevented=s.overflowPrevented||0;state.dumpTrips=s.dumpTrips||0;recalculate();renderAll()},350)}
   function runScenario(){const config=decisionLabConfig(),parts=[config.rain!=='none'&&`${config.rain} rain`,config.festival&&'festival',config.closures&&`${config.closures} closure(s)`,config.failures&&`${config.failures} failure(s)`,config.waste>1&&`${fmt((config.waste-1)*100)}% waste`].filter(Boolean);labResults={...simulateDecisionCopy(config),name:parts.join(' + ')||'Baseline copy'};renderScenarios();toast('What-if plan completed on a copy; live twin unchanged')}
   function applyLabPreset(name){const presets={normal:[0,'none','off',0,8,0,100],festival:[50,'none','on',0,8,0,100],rain:[30,'heavy','off',1,8,0,90],shortage:[50,'none','off',2,5,1,70]},p=presets[name];if(!p)return;$('#wasteRange').value=p[0];$('#rainSelect').value=p[1];$('#festivalSelect').value=p[2];$('#roadRange').value=p[3];$('#truckRange').value=p[4];$('#failureRange').value=p[5];$('#capacityRange').value=p[6];$('#wasteOut').value=`+${p[0]}%`;$('#roadOut').value=p[3];$('#truckOut').value=p[4];$('#failureOut').value=p[5];$('#capacityOut').value=`${p[6]}%`;runScenario()}
-  function findRequiredFleet(){const config=decisionLabConfig(),risk=+$('#targetRisk').value||5,delay=+$('#targetDelay').value||30;let found=null,tests=[];for(let fleet=2;fleet<=12;fleet++){const r=simulateDecisionCopy({...config,trucks:fleet,failures:0},fleet);tests.push(`${fleet}: ${r.overflowRisk}% / ${r.collectionDelay}m`);if(r.overflowRisk<=risk&&r.collectionDelay<=delay){found={fleet,r};break}}$('#fleetResult').innerHTML=found?`<strong>${found.fleet} simulated trucks required</strong><span>Estimated overflow risk ${found.r.overflowRisk}% • delay ${found.r.collectionDelay} min</span><small>Simulation estimate; ${tests.join(' | ')}</small>`:`<strong>Target not reached within 12 trucks</strong><small>${tests.join(' | ')}</small>`}
+  function minimumFleet(config,risk,delay){
+    const tests=[];let found=null;
+    for(let total=Math.max(2,config.failures+1);total<=12;total++){
+      const r=simulateDecisionCopy({...config,trucks:total},total);
+      tests.push(`${total} total (${r.fleet} active): ${r.overflowRisk}% / ${r.collectionDelay}m`);
+      if(r.overflowRisk<=risk&&r.collectionDelay<=delay){found={fleet:total,r};break}
+    }
+    return {found,tests};
+  }
+  function findRequiredFleet(){
+    const config=decisionLabConfig(),risk=+$('#targetRisk').value||5,delay=+$('#targetDelay').value||30,{found,tests}=minimumFleet(config,risk,delay);
+    $('#fleetResult').innerHTML=found?`<strong>${found.fleet} total simulated trucks required</strong><span>${found.r.fleet} active after ${config.failures} failures • overflow risk ${found.r.overflowRisk}% • max delay ${found.r.collectionDelay} min</span><small>90-minute simulation estimate; ${tests.join(' | ')}</small>`:`<strong>Target not reached within 12 total trucks</strong><small>Includes ${config.failures} failures; ${tests.join(' | ')}</small>`;
+  }
   function submitCitizenReport(e){e.preventDefault();const type=$('#reportType').value,location=$('#reportLocation').value.trim(),hazard=/hazard|e-waste/i.test(type),severity=hazard?'Critical':/mixed|organic/i.test(type)?'High':'Medium',facility=hazard?'DS-02':'Best compatible facility';state.reports.unshift({id:`R-${String(state.reports.length+1).padStart(3,'0')}`,location,type:type.toLowerCase(),description:$('#reportDescription').value.trim(),image:$('#reportImage').files[0]?.name||null,severity,facility,step:1});logEvent(`Citizen report at ${location} verified: ${type}, ${severity}; ${facility} recommended.`,'ai');e.target.reset();renderAll();toast('Simulated citizen report classified and verified')}
   function copilotAnswer(kind){const b=criticalBins()[0],truck=state.vehicles.find(v=>v.status==='Collecting'||v.status==='Returning'),facility=truck?facilityChoice(truck,truck.wasteTypes?.[0]||'mixed'):null,low=[...state.bins].sort((a,b)=>a.priority-b.priority)[0];const answers={next:`Collect ${b.id} next. It has ${b.priority}/100 priority, ${b.overflowProbability}% overflow probability and ${fmt(b.distanceKm,1)} km estimated distance.`,truck:truck?`${truck.id} was selected because it has ${fmt((truck.capacity-truck.currentLoad)/truck.capacity*100)}% capacity remaining and an efficient route to ${truck.assignedBin||state.facilities[truck.facility]?.id}.`:'No truck is active; the next available feasible truck will be selected.',skip:`${low.id} is skipped because its priority is only ${low.priority}/100 and higher-risk bins need service first.`,breakdown:truck?`If ${truck.id} fails, ${truck.assignedBin||'its work'} returns to the queue, priorities recalculate and another available truck receives a new route.`:'A breakdown would reduce fleet capacity and trigger re-assignment.',facility:facility?`${facility.f.id} is preferred: ${fmt(facility.load*100)}% loaded, ${fmt(facility.distance,1)} km away and waste-compatible.`:'No active loaded truck currently needs a facility.'};$('#copilotAnswer').textContent=answers[kind]||'No answer available.'}
   function exportReport(){const m=currentMetrics();const report={project:'AI-WasteTwin',mode:'SIMULATION MODE — LOCAL / OFFLINE — SIMULATED DATA',generatedAt:new Date().toISOString(),simulationTime:timeText(),scenario:state.scenario,metrics:{totalBins:100,binsCollected:state.binsCollected,overflowIncidents:state.overflowIncidents,overflowPrevented:state.overflowPrevented,availableVehicles:m.available,wasteCollectedTons:+state.wasteCollected.toFixed(2),wasteRecoveredTons:+state.recoveredWaste.toFixed(2),overflowRisk:+m.overflow.toFixed(1),serviceLevel:+state.serviceLevel.toFixed(1),routeDistanceKm:+state.routeDistance.toFixed(1),dumpTrips:state.dumpTrips,averageBinsPerTrip:+m.avgBinsPerTrip.toFixed(1),simulatedCost:+state.simulatedCost.toFixed(1)},incidents:state.incidents,reports:state.reports,decisionLog:state.logs,history:state.history};const blob=new Blob([JSON.stringify(report,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='AI-WasteTwin-simulation-report.json';a.click();URL.revokeObjectURL(a.href);toast('Local report exported')}
@@ -468,6 +653,7 @@
     $$('.nav-item').forEach(b=>b.addEventListener('click',()=>showPage(b.dataset.page)));
     $$('[data-page-link]').forEach(b=>b.addEventListener('click',()=>showPage(b.dataset.pageLink)));
     $('#menuBtn').addEventListener('click',()=>$('.sidebar').classList.toggle('open'));
+    bindMapNavigation();
     $('#playBtn').addEventListener('click',()=>setRunning(!state.isRunning));$('#quickPlay').addEventListener('click',()=>setRunning(!state.isRunning));
     $('#stepBtn').addEventListener('click',()=>{setRunning(false);tick()});$('#resetBtn').addEventListener('click',reset);$('#replayBtn').addEventListener('click',replay);
     $('#guidedDemoBtn').addEventListener('click',startDemo);$('#demoPauseBtn').addEventListener('click',pauseGuided);$('#demoSkipBtn').addEventListener('click',skipGuided);$('#demoExitBtn').addEventListener('click',exitGuided);
@@ -479,7 +665,7 @@
     $$('[data-twin-layer]').forEach(b=>b.addEventListener('click',()=>{currentTwinLayer=b.dataset.twinLayer;$$('[data-twin-layer]').forEach(x=>x.classList.toggle('active',x===b));renderMaps()}));
     ['zoneFilter','riskFilter'].forEach(id=>$(`#${id}`).addEventListener('change',renderMaps));
     $('#mapZoomIn').addEventListener('click',()=>{mapZoom=clamp(mapZoom+.25,1,2.25);renderMaps()});$('#mapZoomOut').addEventListener('click',()=>{mapZoom=clamp(mapZoom-.25,1,2.25);renderMaps()});
-    $('#mapReset').addEventListener('click',()=>{mapZoom=1;$('#zoneFilter').value='all';$('#riskFilter').value='all';selectedBinId=null;renderMaps();renderDetail()});
+    $('#mapReset').addEventListener('click',()=>{mapZoom=1;mapCenter={x:500,y:340};$('#zoneFilter').value='all';$('#riskFilter').value='all';selectedBinId=null;renderMaps();renderDetail()});
     $('#focusCritical').addEventListener('click',()=>{$('#zoneFilter').value='all';$('#riskFilter').value='critical';renderMaps();const target=criticalBins()[0];if(target)selectBin(target.id)});
     $$('.incident-card[data-incident]').forEach(b=>b.addEventListener('click',()=>activateIncident(b.dataset.incident)));$$('[data-sim-incident]').forEach(b=>b.addEventListener('click',()=>activateIncident(b.dataset.simIncident)));$('#cityCrisisBtn').addEventListener('click',activateCityCrisis);
     $('#runScenario').addEventListener('click',runScenario);$$('[data-lab-preset]').forEach(b=>b.addEventListener('click',()=>applyLabPreset(b.dataset.labPreset)));$('#findFleetBtn').addEventListener('click',findRequiredFleet);

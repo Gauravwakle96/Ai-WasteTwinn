@@ -37,6 +37,12 @@
 @media(max-width:760px){.sidebar{visibility:hidden}.sidebar.open{visibility:visible}}
 @media(max-width:620px){#twin{padding-left:10px;padding-right:10px}.twin-heading{padding-left:6px;padding-right:6px}.twin-stage{min-height:720px}.atlas-map{height:720px;min-height:720px}.map-filter-bar{top:10px;left:54px;right:10px;display:grid;grid-template-columns:1fr 1fr;min-height:auto}.map-filter-bar label{width:auto}.map-filter-bar .map-action{grid-column:span 2;margin-top:0}.map-zoom-controls{top:10px;left:10px}.floating-legend{left:10px;bottom:10px;width:165px}.map-drawer{left:10px;right:10px;top:auto;bottom:10px;width:auto;max-height:470px}}
 
+.atlas-map.is-zoomed{touch-action:none;cursor:grab}
+.atlas-map.is-dragging{cursor:grabbing}
+.bin:focus-visible{outline:none;stroke:#151515;stroke-width:5;filter:drop-shadow(0 0 4px #fff)}
+#cityMap:focus-visible{outline:3px solid var(--blue);outline-offset:-3px}
+#mapNavigationHelp{font-size:11px;color:var(--muted);margin-top:5px}
+
 /* v4: simpler, guided Simulation Center */
 .sim-quick-start{display:grid;grid-template-columns:minmax(280px,1.15fr) minmax(360px,1.4fr) auto;gap:24px;align-items:center;margin-bottom:12px;border-color:rgba(226,184,63,.28);background:linear-gradient(100deg,rgba(226,184,63,.1),rgba(21,30,42,.96) 42%)}.quick-start-copy h2{font-size:22px;margin:0 0 6px}.quick-start-copy p{margin:0;color:var(--muted);max-width:590px}.quick-start-steps{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;list-style:none;margin:0;padding:0}.quick-start-steps li{display:flex;align-items:center;gap:9px;padding:10px;border:1px solid var(--line);border-radius:9px;background:rgba(8,14,21,.35)}.quick-start-steps li>b{width:28px;height:28px;display:grid;place-items:center;flex:none;border-radius:7px;background:rgba(226,184,63,.14);color:var(--blue)}.quick-start-steps strong,.quick-start-steps small{display:block}.quick-start-steps strong{font-size:12px}.quick-start-steps small{font-size:10px;color:var(--muted);margin-top:2px}
 #simulation .control-deck{display:grid;grid-template-columns:1fr auto;gap:12px 20px;padding:14px 16px}.control-label{grid-column:1/-1}.control-label .kicker,.control-label small{display:block}.control-label .kicker{margin-bottom:3px}.control-label small{color:var(--muted)}#simulation .sim-controls{justify-content:flex-start;flex-wrap:wrap}#simulation .speed-control{justify-self:end}

@@ -27,8 +27,8 @@ def main():
             "fabricated fixed-schedule metric multipliers are absent")
     require("Math.max(state.overflowIncidents+Math.ceil(m.overflow/15),state.overflowIncidents)" not in app,
             "fabricated overflow-incidence adjustment is absent")
-    require("const wasOverflowed=b.fill>=100" in app and "if(!wasOverflowed&&b.fill>=100)overflowEvents++" in app,
-            "Decision Lab counts a bin's first overflow crossing, not every full tick")
+    require("if(before<100&&b.fill>=100){s.overflowIncidents++" in app,
+            "shared simulation counts overflow crossings, not every full tick")
     require("function simulateDecisionCopy" in app and "overflowEvents" in app,
             "Decision Lab projection and overflow metric remain present")
     require("src=\"app.js\"" in html and "href=\"styles.css\"" in html,
